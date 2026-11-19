@@ -10,7 +10,7 @@ A mobile-first web app for creating invoices, quotes, receipts and other busines
 - **Payments:** documents can be marked as paid or partly paid, with a date and method. Overdue documents are tracked, and paid documents can show an optional PAID stamp.
 - **Recurring documents:** daily, weekly, every 2 weeks, monthly, every 2 months, quarterly or yearly. A new copy is created when you open the app on or after the due date.
 - **Output:** PDF download, sharing through the phone's share sheet (which attaches the PDF in Gmail, WhatsApp and similar apps), printing, and email drafts.
-- **Look:** 4 templates, a choice of accent colour, your logo, a drawn or uploaded signature, A4 or US Letter paper, and any currency and locale.
+- **Look:** 10 templates, a choice of accent colour, your logo, a drawn or uploaded signature, A4 or US Letter paper, and any currency and locale.
 - **Reports:** filter by period, type and status, see totals for tax, paid and outstanding amounts, and export to CSV or print.
 - **Data:** everything is stored in the browser's `localStorage`. You can back up and restore with a JSON file, which is also how you move your data to another device.
 

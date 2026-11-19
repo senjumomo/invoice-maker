@@ -41,13 +41,13 @@ export function paperHTML(doc) {
   const sig = doc.showSignature && s.signature
     ? `<div class="p-sign"><img src="${s.signature}" alt=""><div class="line">Authorized signature</div></div>` : '';
 
-  return `<div class="paper tpl-${esc(doc.template || 'classic')} ${s.paper === 'letter' ? 'letter' : ''}" style="--accent:${esc(doc.color || '#1f4fd8')}">
+  return `<div class="paper tpl-${esc(doc.template || 'classic')} ${s.paper === 'letter' ? 'letter' : ''}" style="${accentVars(doc.color || '#1f4fd8')}">
     <div class="p-head">
       <div>
         ${s.logo ? `<img class="p-logo" src="${s.logo}" alt="">` : ''}
         <div class="p-from" style="${s.logo ? 'margin-top:12px' : ''}"><div class="name">${esc(fromName)}</div>${esc(fromRest.join('\n'))}</div>
       </div>
-      <div class="p-title">${esc(type.label)}</div>
+      <div class="p-titles"><div class="p-title">${esc(type.label)}</div><div class="p-sub">${esc(doc.number)}</div></div>
     </div>
     <div class="p-meta">
       <div class="p-parties">
@@ -56,6 +56,10 @@ export function paperHTML(doc) {
       </div>
       <table class="p-info">${info.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>
     </div>
+    ${noPrices ? '' : `<div class="p-callout">
+      <div><div class="p-label">${showPaid ? 'Balance Due' : 'Amount Due'}</div><div class="amt">${m(showPaid ? t.balance : t.total)}</div></div>
+      ${doc.dueDate ? `<div><div class="p-label">${type.validUntil ? 'Valid Until' : 'Due Date'}</div><div class="when">${esc(fmtDate(doc.dueDate))}</div></div>` : ''}
+    </div>`}
     <table class="p-items">
       <thead><tr><th class="num">Qty</th><th>Description</th>${noPrices ? '' : '<th class="num">Unit Price</th><th class="num">Amount</th>'}</tr></thead>
       <tbody>${rows}</tbody>
@@ -67,6 +71,14 @@ export function paperHTML(doc) {
     ${doc.footer ? `<div class="p-footer">${esc(doc.footer)}</div>` : ''}
     ${stamp}
   </div>`;
+}
+
+// Accent plus a light tint and a dark shade, as plain hex so the PDF renderer can read them.
+function accentVars(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex) || [0, '1f4fd8'];
+  const n = parseInt(m[1], 16), rgb = [n >> 16, (n >> 8) & 255, n & 255];
+  const mix = (to, k) => '#' + rgb.map(c => Math.round(c + (to - c) * k).toString(16).padStart(2, '0')).join('');
+  return `--accent:#${m[1]};--accent-soft:${mix(255, .9)};--accent-mid:${mix(255, .7)};--accent-dark:${mix(0, .45)}`;
 }
 
 function fmtQty(q) { const n = Number(q); return Number.isInteger(n) ? n : n.toFixed(2).replace(/0+$/, ''); }

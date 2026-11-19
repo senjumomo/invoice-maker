@@ -20,6 +20,12 @@ export const TEMPLATES = [
   { id: 'modern', name: 'Modern' },
   { id: 'minimal', name: 'Minimal' },
   { id: 'bold', name: 'Bold' },
+  { id: 'clean', name: 'Clean' },
+  { id: 'elegant', name: 'Elegant' },
+  { id: 'corporate', name: 'Corporate' },
+  { id: 'fresh', name: 'Fresh' },
+  { id: 'luxe', name: 'Luxe' },
+  { id: 'wave', name: 'Wave' },
 ];
 export const COLORS = ['#1f4fd8', '#0e7c86', '#18794e', '#6d28d9', '#be185d', '#c2410c', '#b45309', '#334155', '#111827'];
 
