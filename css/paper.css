@@ -1,0 +1,66 @@
+/* The printable document. Always rendered at real paper size (96 dpi) and scaled for on-screen preview. */
+.paper {
+  --accent: #1f4fd8;
+  width: 794px; min-height: 1123px; background: #fff; color: #1b1f27;
+  font: 13px/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  padding: 56px 56px 48px; position: relative; display: flex; flex-direction: column;
+  color-scheme: light;
+}
+.paper.letter { width: 816px; min-height: 1056px; }
+.paper * { box-sizing: border-box; }
+.paper .p-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 28px; }
+.paper .p-logo { max-width: 220px; max-height: 96px; object-fit: contain; display: block; }
+.paper .p-title { font-size: 30px; font-weight: 700; letter-spacing: .02em; color: var(--accent); text-transform: uppercase; text-align: right; line-height: 1.1; }
+.paper .p-from { white-space: pre-line; }
+.paper .p-from .name { font-weight: 700; font-size: 15px; }
+.paper .p-meta { display: flex; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+.paper .p-parties { display: flex; gap: 28px; flex: 1; }
+.paper .p-party { flex: 1; max-width: 260px; }
+.paper .p-label { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.paper .p-party .body { white-space: pre-line; }
+.paper .p-info { border-collapse: collapse; align-self: flex-start; }
+.paper .p-info td { padding: 2px 0 2px 16px; text-align: right; white-space: nowrap; }
+.paper .p-info td:first-child { font-weight: 700; color: #4b5260; }
+.paper table.p-items { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+.paper .p-items th { background: var(--accent); color: #fff; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; text-align: left; padding: 9px 10px; }
+.paper .p-items td { padding: 9px 10px; border-bottom: 1px solid #e3e6ec; vertical-align: top; white-space: pre-line; }
+.paper .p-items .num { text-align: right; white-space: nowrap; width: 1%; }
+.paper .p-items .taxnote { font-size: 11px; color: #6b7280; }
+.paper .p-totals { margin-left: auto; width: 300px; border-collapse: collapse; }
+.paper .p-totals td { padding: 5px 10px; text-align: right; }
+.paper .p-totals td:first-child { color: #4b5260; }
+.paper .p-totals .grand td { font-weight: 700; font-size: 16px; border-top: 2px solid var(--accent); padding-top: 9px; }
+.paper .p-totals .due td { font-weight: 700; color: var(--accent); }
+.paper .p-bottom { margin-top: 28px; display: flex; justify-content: space-between; gap: 32px; align-items: flex-end; }
+.paper .p-terms { flex: 1; white-space: pre-line; }
+.paper .p-sign { text-align: center; min-width: 200px; }
+.paper .p-sign img { max-height: 80px; max-width: 220px; display: block; margin: 0 auto 4px; }
+.paper .p-sign .line { border-top: 1px solid #9aa0aa; padding-top: 4px; font-size: 11px; color: #6b7280; }
+.paper .p-footer { margin-top: auto; padding-top: 28px; text-align: center; color: #6b7280; font-size: 11.5px; white-space: pre-line; }
+.paper .p-stamp {
+  position: absolute; top: 300px; right: 90px; transform: rotate(-16deg);
+  border: 5px solid #1a9a5a; color: #1a9a5a; border-radius: 10px; padding: 6px 22px;
+  font: 800 46px/1 Arial, sans-serif; letter-spacing: .1em; opacity: .55; text-align: center;
+}
+.paper .p-stamp small { display: block; font-size: 13px; letter-spacing: .04em; font-weight: 700; }
+
+/* Modern: solid colour band header */
+.paper.tpl-modern { padding-top: 0; }
+.paper.tpl-modern .p-head { background: var(--accent); color: #fff; margin: 0 -56px 28px; padding: 36px 56px 30px; }
+.paper.tpl-modern .p-title { color: #fff; }
+.paper.tpl-modern .p-logo { background: #fff; padding: 6px; border-radius: 6px; }
+
+/* Minimal: no fills, hairlines */
+.paper.tpl-minimal .p-title { color: #1b1f27; font-weight: 300; font-size: 34px; letter-spacing: .12em; }
+.paper.tpl-minimal .p-items th { background: none; color: #1b1f27; border-bottom: 2px solid #1b1f27; padding-left: 0; }
+.paper.tpl-minimal .p-items td { padding-left: 0; }
+.paper.tpl-minimal .p-label { color: #6b7280; }
+.paper.tpl-minimal .p-totals .grand td { border-top-color: #1b1f27; }
+
+/* Bold: accent side stripe and boxed totals */
+.paper.tpl-bold { padding-left: 76px; }
+.paper.tpl-bold::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 18px; background: var(--accent); }
+.paper.tpl-bold .p-title { font-size: 40px; font-weight: 900; }
+.paper.tpl-bold .p-items th { background: #1b1f27; }
+.paper.tpl-bold .p-totals .grand td { background: var(--accent); color: #fff; border: 0; }
+.paper.tpl-bold .p-meta { background: #f4f6f9; padding: 16px 18px; border-radius: 8px; }
