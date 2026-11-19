@@ -16,9 +16,11 @@ export function paperHTML(doc) {
     doc.dueDate && [type.validUntil ? 'Valid Until' : 'Due Date', fmtDate(doc.dueDate)],
   ].filter(Boolean);
 
+  const hasDates = t.lines.some(l => l.date);
   const rows = t.lines.map(l => {
     const tx = (l.taxes || []).map(x => `${esc(x.name)} ${x.rate}%`).join(', ');
     return `<tr>
+      ${hasDates ? `<td class="date">${esc(fmtDate(l.date))}</td>` : ''}
       <td class="num">${esc(fmtQty(l.qty))}</td>
       <td>${esc(l.desc)}${tx ? `<div class="taxnote">${tx}</div>` : ''}</td>
       ${noPrices ? '' : `<td class="num">${m(l.price)}</td><td class="num">${m(l.amount)}</td>`}
@@ -61,7 +63,7 @@ export function paperHTML(doc) {
       ${doc.dueDate ? `<div><div class="p-label">${type.validUntil ? 'Valid Until' : 'Due Date'}</div><div class="when">${esc(fmtDate(doc.dueDate))}</div></div>` : ''}
     </div>`}
     <table class="p-items">
-      <thead><tr><th class="num">Qty</th><th>Description</th>${noPrices ? '' : '<th class="num">Unit Price</th><th class="num">Amount</th>'}</tr></thead>
+      <thead><tr>${hasDates ? '<th class="date">Date</th>' : ''}<th class="num">Qty</th><th>Description</th>${noPrices ? '' : '<th class="num">Unit Price</th><th class="num">Amount</th>'}</tr></thead>
       <tbody>${rows}</tbody>
     </table>
     ${totalsRows}

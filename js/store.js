@@ -210,6 +210,7 @@ export function runRecurring() {
       const dueGap = src.dueDate ? Math.round((new Date(src.dueDate) - new Date(src.date)) / 864e5) : null;
       c.date = r.next; c.dueDate = dueGap != null ? addDays(r.next, dueGap) : '';
       c.recurringFrom = src.id; c.number = nextNumber(c.type);
+      c.items.forEach(it => { delete it.date; }); // item dates belong to the original period
       delete c.isNew; state.docs.unshift(c); created.push(c);
       r.next = advance(r.next, r.freq);
     }

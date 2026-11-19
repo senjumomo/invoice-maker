@@ -174,8 +174,9 @@ main { max-width: 760px; margin: 0 auto; padding: 12px 16px 24px; outline: none;
 /* ---------- editor ---------- */
 .item-row { padding: 12px 0; border-bottom: 1px dashed var(--line); }
 .item-row:last-of-type { border-bottom: 0; }
-.item-row .grid3 { display: grid; grid-template-columns: 1fr 1.3fr 1.2fr; gap: 8px; margin-top: 8px; align-items: end; }
-.item-row .line-total { font-weight: 700; text-align: right; padding-bottom: 11px; font-variant-numeric: tabular-nums; }
+.item-row .grid3 { display: grid; grid-template-columns: 1.55fr .75fr 1.2fr; gap: 8px; margin-top: 8px; align-items: end; }
+.item-row .grid3 input { min-width: 0; padding-left: 10px; padding-right: 8px; }
+.item-row .line-total { font-weight: 700; text-align: right; font-size: 16px; font-variant-numeric: tabular-nums; }
 .item-tools { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
 .tax-pill { font-size: 12.5px; background: var(--surface-2); border-radius: 999px; padding: 5px 10px; border: 0; cursor: pointer; }
 .totals-box { margin-top: 6px; }

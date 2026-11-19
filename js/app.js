@@ -439,6 +439,15 @@ function editView(id, newType, custId) {
     });
     if (a === 'addItem') { d.items.push({ id: S.uid(), desc: '', qty: 1, price: 0, taxes: [] }); dirty = true; draw(); $$('#items [data-if=desc]').pop()?.focus(); }
     if (a === 'addSaved') savedItemPicker(it => { d.items = d.items.filter(x => x.desc || num(x.price)); d.items.push({ id: S.uid(), desc: it.desc, qty: 1, price: it.price, taxes: structuredClone(it.taxes || []) }); dirty = true; draw(); });
+    if (a === 'dupItem') {
+      // Copy the line just below this one (same description, price, taxes and date), ready to change the date.
+      const i = +b.closest('[data-i]').dataset.i;
+      d.items.splice(i + 1, 0, { ...structuredClone(d.items[i]), id: S.uid() });
+      dirty = true; draw();
+      const next = $(`#items [data-i="${i + 1}"]`);
+      next?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      next?.querySelector('[data-if=date]')?.focus();
+    }
     if (a === 'delItem') { d.items.splice(+b.closest('[data-i]').dataset.i, 1); if (!d.items.length) d.items.push({ id: S.uid(), desc: '', qty: 1, price: 0, taxes: [] }); dirty = true; draw(); }
     if (a === 'taxes') { const it = itemAt(b); taxPicker(it, () => { dirty = true; draw(); }); }
     if (a === 'saveItem') {
@@ -468,17 +477,21 @@ function editView(id, newType, custId) {
 function itemRow(it, i, type) {
   const taxes = it.taxes || [];
   return `<div class="item-row" data-i="${i}">
-    <label class="field"><textarea data-if="desc" rows="1" placeholder="Description" style="min-height:44px">${esc(it.desc)}</textarea></label>
+    <div class="row" style="align-items:flex-start;gap:4px">
+      <label class="field grow"><textarea data-if="desc" rows="1" placeholder="Description" style="min-height:44px">${esc(it.desc)}</textarea></label>
+      <button class="icon-btn" data-act="delItem" aria-label="Remove item" style="margin:0;flex:none">${icon('trash', 'style="width:20px;height:20px;color:var(--danger)"')}</button>
+    </div>
     <div class="grid3">
+      <label class="field"><span>Date (optional)</span><input data-if="date" type="date" value="${esc(it.date || '')}"></label>
       <label class="field"><span>Qty</span><input data-if="qty" inputmode="decimal" value="${it.qty}"></label>
-      ${type.noPrices ? '' : `<label class="field"><span>Unit price</span><input data-if="price" inputmode="decimal" value="${it.price || ''}" placeholder="0.00"></label>
-      <div class="line-total" data-line="${i}"></div>`}
+      ${type.noPrices ? '' : `<label class="field"><span>Unit price</span><input data-if="price" inputmode="decimal" value="${it.price || ''}" placeholder="0.00"></label>`}
     </div>
     <div class="item-tools">
       ${type.noPrices ? '' : `<button class="tax-pill" data-act="taxes">${taxes.length ? taxes.map(t => `${esc(t.name)} ${t.rate}%`).join(' + ') : '+ Tax'}</button>`}
+      <button class="tax-pill" data-act="dupItem">Duplicate</button>
       <button class="tax-pill" data-act="saveItem">Save item</button>
       <div class="grow"></div>
-      <button class="icon-btn" data-act="delItem" aria-label="Remove item" style="margin:0;width:36px;height:36px">${icon('trash', 'style="width:20px;height:20px;color:var(--danger)"')}</button>
+      ${type.noPrices ? '' : `<div class="line-total" data-line="${i}"></div>`}
     </div>
   </div>`;
 }

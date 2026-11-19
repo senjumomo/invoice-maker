@@ -150,3 +150,4 @@
 .paper.tpl-wave .p-items th:first-child { border-radius: 8px 0 0 0; }
 .paper.tpl-wave .p-items th:last-child { border-radius: 0 8px 0 0; }
 .paper.tpl-wave .p-footer { border-top: 4px solid var(--accent); margin-left: -56px; margin-right: -56px; padding-bottom: 0; }
+.paper .p-items .date { white-space: nowrap; width: 1%; }
