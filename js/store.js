@@ -23,14 +23,14 @@ export const TEMPLATES = [
 ];
 export const COLORS = ['#1f4fd8', '#0e7c86', '#18794e', '#6d28d9', '#be185d', '#c2410c', '#b45309', '#334155', '#111827'];
 
-export const CURRENCIES = ['USD','EUR','GBP','CAD','AUD','NZD','INR','PKR','AED','SAR','ZAR','NGN','KES','SGD','MYR','PHP','JPY','CNY','HKD','CHF','SEK','NOK','DKK','PLN','MXN','BRL','TRY'];
+export const CURRENCIES = ['ZAR','USD','EUR','GBP','CAD','AUD','NZD','INR','PKR','AED','SAR','NGN','KES','SGD','MYR','PHP','JPY','CNY','HKD','CHF','SEK','NOK','DKK','PLN','MXN','BRL','TRY'];
 
 const defaults = () => ({
   version: 1,
   settings: {
     business: { name: '', address: '', email: '', phone: '', website: '', taxId: '' },
     logo: '', signature: '',
-    currency: 'USD', locale: navigator.language || 'en-US', paper: 'a4',
+    currency: 'ZAR', locale: 'en-ZA', paper: 'a4',
     template: 'classic', color: COLORS[0],
     dueDays: 14, terms: '', footer: 'Thank you for your business!',
     paidStamp: true, showSignature: false, theme: 'auto',

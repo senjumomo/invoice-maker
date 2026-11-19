@@ -71,20 +71,23 @@ const docFilter = { status: 'all', type: 'all', q: '' };
 function docsView() {
   setChrome({ fab: () => pickDocType(t => location.hash = `#/new/${t}`) });
   const all = live(), cur = S.settings().currency;
-  const sums = { unpaid: 0, overdue: 0, paid: 0 };
+  // Totals per currency; the default currency is always shown first.
+  const sums = { unpaid: { [cur]: 0 }, overdue: { [cur]: 0 }, paid: { [cur]: 0 } };
+  const add = (k, c, v) => { sums[k][c] = (sums[k][c] || 0) + v; };
   for (const d of all) {
-    if (d.currency !== cur) continue;
-    const t = totals(d), st = status(d, t);
-    if (st === 'overdue') sums.overdue += t.balance;
-    if (st === 'unpaid' || st === 'partial' || st === 'overdue') sums.unpaid += t.balance;
-    if (st === 'paid' || st === 'partial') sums.paid += t.paid;
+    const t = totals(d), st = status(d, t), c = d.currency || cur;
+    if (st === 'overdue') add('overdue', c, t.balance);
+    if (st === 'unpaid' || st === 'partial' || st === 'overdue') add('unpaid', c, t.balance);
+    if (st === 'paid' || st === 'partial') add('paid', c, t.paid);
   }
+  const show = k => Object.entries(sums[k]).filter(([c, v]) => c === cur || Math.abs(v) > 0.004)
+    .map(([c, v]) => `<div>${money(v, c)}</div>`).join('');
   const typesUsed = [...new Set(all.map(d => d.type))];
   view.innerHTML = `
     <div class="summary">
-      <div class="card"><div class="label">Unpaid</div><div class="value">${money(sums.unpaid)}</div></div>
-      <div class="card"><div class="label">Overdue</div><div class="value ${sums.overdue ? 'bad' : ''}">${money(sums.overdue)}</div></div>
-      <div class="card"><div class="label">Paid</div><div class="value good">${money(sums.paid)}</div></div>
+      <div class="card"><div class="label">Unpaid</div><div class="value">${show('unpaid')}</div></div>
+      <div class="card"><div class="label">Overdue</div><div class="value ${Object.values(sums.overdue).some(v => v > 0.004) ? 'bad' : ''}">${show('overdue')}</div></div>
+      <div class="card"><div class="label">Paid</div><div class="value good">${show('paid')}</div></div>
       <div class="card"><div class="label">Documents</div><div class="value">${all.length}</div></div>
     </div>
     <div class="search">${icon('search')}<input class="input" id="q" type="search" placeholder="Search customer, number or item" value="${esc(docFilter.q)}"></div>
@@ -802,7 +805,7 @@ function settingsView() {
       </div>
       <div class="grid2">
         <label class="field"><span>Paper size</span><select data-s="paper"><option value="a4" ${s.paper === 'a4' ? 'selected' : ''}>A4</option><option value="letter" ${s.paper === 'letter' ? 'selected' : ''}>US Letter</option></select></label>
-        <label class="field"><span>Number &amp; date format</span><select data-s="locale">${['en-US', 'en-GB', 'en-IN', 'en-AU', 'en-CA', 'de-DE', 'fr-FR', 'es-ES', 'it-IT', 'pt-BR', 'nl-NL', 'ar-AE'].concat(navigator.language).filter((v, i, a) => a.indexOf(v) === i)
+        <label class="field"><span>Number &amp; date format</span><select data-s="locale">${['en-ZA', 'en-US', 'en-GB', 'en-IN', 'en-AU', 'en-CA', 'de-DE', 'fr-FR', 'es-ES', 'it-IT', 'pt-BR', 'nl-NL', 'ar-AE'].concat(navigator.language).filter((v, i, a) => a.indexOf(v) === i)
           .map(l => `<option value="${l}" ${s.locale === l ? 'selected' : ''}>${l} — ${new Intl.NumberFormat(l, { style: 'currency', currency: s.currency }).format(1234.5)}</option>`).join('')}</select></label>
       </div>
       <label class="field"><span>Default terms &amp; conditions</span><textarea data-s="terms" rows="3">${esc(s.terms)}</textarea></label>
