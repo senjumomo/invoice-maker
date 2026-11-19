@@ -80,8 +80,11 @@ function docsView() {
     if (st === 'unpaid' || st === 'partial' || st === 'overdue') add('unpaid', c, t.balance);
     if (st === 'paid' || st === 'partial') add('paid', c, t.paid);
   }
-  const show = k => Object.entries(sums[k]).filter(([c, v]) => c === cur || Math.abs(v) > 0.004)
-    .map(([c, v]) => `<div>${money(v, c)}</div>`).join('');
+  // Default currency only, unless some document uses another one (then show each non-zero amount).
+  const show = k => {
+    const rows = Object.entries(sums[k]).filter(([c, v]) => Math.abs(v) > 0.004);
+    return (rows.length ? rows : [[cur, 0]]).map(([c, v]) => `<div>${money(v, c)}</div>`).join('');
+  };
   const typesUsed = [...new Set(all.map(d => d.type))];
   view.innerHTML = `
     <div class="summary">

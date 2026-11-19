@@ -26,7 +26,7 @@ export const COLORS = ['#1f4fd8', '#0e7c86', '#18794e', '#6d28d9', '#be185d', '#
 export const CURRENCIES = ['ZAR','USD','EUR','GBP','CAD','AUD','NZD','INR','PKR','AED','SAR','NGN','KES','SGD','MYR','PHP','JPY','CNY','HKD','CHF','SEK','NOK','DKK','PLN','MXN','BRL','TRY'];
 
 const defaults = () => ({
-  version: 1,
+  version: 2,
   settings: {
     business: { name: '', address: '', email: '', phone: '', website: '', taxId: '' },
     logo: '', signature: '',
@@ -46,8 +46,20 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaults();
     const d = JSON.parse(raw), base = defaults();
-    return { ...base, ...d, settings: { ...base.settings, ...d.settings, business: { ...base.settings.business, ...(d.settings || {}).business } } };
+    return migrate({ ...base, ...d, settings: { ...base.settings, ...d.settings, business: { ...base.settings.business, ...(d.settings || {}).business } } });
   } catch { return defaults(); }
+}
+
+// One-time switch to rands: early versions defaulted to US dollars.
+// Moves the default and every USD document to ZAR (amounts stay the same).
+function migrate(s) {
+  if (s.version < 2) {
+    if (s.settings.currency === 'USD') { s.settings.currency = 'ZAR'; s.settings.locale = 'en-ZA'; }
+    for (const d of s.docs) if (d.currency === 'USD') d.currency = 'ZAR';
+    s.version = 2;
+    try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {}
+  }
+  return s;
 }
 
 export function save() {
