@@ -219,8 +219,7 @@ function paymentSheet(d, t, done) {
         <label class="field"><span>Amount paid</span><input id="p_amt" inputmode="decimal" value="${amt}"></label>
         <label class="field"><span>Date paid</span><input id="p_date" type="date" value="${esc(p.date || S.today())}"></label>
       </div>
-      <label class="field"><span>Method (optional)</span><input id="p_method" list="methods" value="${esc(p.method || '')}" placeholder="Cash, bank transfer, card…">
-        <datalist id="methods"><option>Cash</option><option>Bank transfer</option><option>Card</option><option>Cheque</option><option>PayPal</option><option>Other</option></datalist></label>
+      <label class="field"><span>Method</span><select id="p_method">${methodOptions(p.method || 'Bank transfer')}</select></label>
     </div>
     <div class="sheet-actions">${d.payment ? '<button class="btn danger" data-x="unpaid">Mark unpaid</button>' : ''}<button class="btn primary" data-x="save">Save payment</button></div>`);
   sh.onclick = e => {
@@ -228,10 +227,17 @@ function paymentSheet(d, t, done) {
     if (b.dataset.x === 'unpaid') d.payment = null;
     else {
       const a = num($('#p_amt').value);
-      d.payment = { amount: a >= t.total ? null : a, date: $('#p_date').value, method: $('#p_method').value.trim() };
+      d.payment = { amount: a >= t.total ? null : a, date: $('#p_date').value, method: $('#p_method').value };
     }
     S.save(); closeSheet(); toast('Payment updated'); done();
   };
+}
+
+const PAY_METHODS = ['Bank transfer', 'Cash', 'Card', 'Cheque', 'Other'];
+function methodOptions(sel) {
+  // Keep any older free-text method so editing a payment doesn't lose it.
+  const list = PAY_METHODS.includes(sel) ? PAY_METHODS : [sel, ...PAY_METHODS];
+  return list.map(m => `<option ${m === sel ? 'selected' : ''}>${esc(m)}</option>`).join('');
 }
 
 function moreSheet(d) {
@@ -249,7 +255,7 @@ function moreSheet(d) {
     if (x === 'style') styleSheet(d, () => { S.save(); docView(d.id); });
     if (x === 'convert') pickDocType(type => {
       d.type = type; d.number = S.nextNumber(type);
-      if (DOC_TYPES[type].paidByDefault && !d.payment) d.payment = { amount: null, date: S.today(), method: '' };
+      if (DOC_TYPES[type].paidByDefault && !d.payment) d.payment = { amount: null, date: S.today(), method: 'Bank transfer' };
       S.save(); toast(`Converted to ${DOC_TYPES[type].label}`); docView(d.id);
     }, 'Convert to…');
     if (x === 'trash') { S.trashDoc(d.id); toast('Moved to Trash'); location.hash = '#/'; }

@@ -1,5 +1,5 @@
 // Offline support: network first (so updates show straight away), falling back to the cache when offline.
-const CACHE = 'invoice-maker-v4';
+const CACHE = 'invoice-maker-v5';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'css/paper.css',
   'js/app.js', 'js/store.js', 'js/calc.js', 'js/render.js', 'js/export.js', 'js/ui.js',

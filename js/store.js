@@ -97,7 +97,7 @@ export function newDoc(type = 'invoice') {
     discount: 0, shipping: 0,
     terms: s.terms, footer: s.footer, currency: s.currency,
     template: s.template, color: s.color, showSignature: s.showSignature,
-    payment: t.paidByDefault ? { amount: null, date: today(), method: '' } : null,
+    payment: t.paidByDefault ? { amount: null, date: today(), method: 'Bank transfer' } : null,
     recurring: null, sentAt: null, deletedAt: null, createdAt: Date.now(), updatedAt: Date.now(), isNew: true,
   };
 }
@@ -125,7 +125,7 @@ export function copyDoc(doc, type = doc.type) {
   Object.assign(c, {
     id: uid(), type, number: nextNumber(type, true), date: today(),
     dueDate: doc.dueDate ? addDays(today(), Number(state.settings.dueDays) || 0) : '',
-    payment: DOC_TYPES[type].paidByDefault ? { amount: null, date: today(), method: '' } : null,
+    payment: DOC_TYPES[type].paidByDefault ? { amount: null, date: today(), method: 'Bank transfer' } : null,
     recurring: null, sentAt: null, deletedAt: null, createdAt: Date.now(), updatedAt: Date.now(), isNew: true,
   });
   c.items = c.items.map(it => ({ ...it, id: uid() }));
