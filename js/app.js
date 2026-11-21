@@ -45,8 +45,14 @@ function setChrome({ title = 'Invoice Maker', back = false, fab = null, actions 
   $('#topActions').innerHTML = actions; $('#topActions').onclick = null;
   $('#fab').hidden = !fab; $('#fab').onclick = fab;
   document.body.classList.toggle('no-nav', !nav);
+  // iOS large title on root tabs; the small nav-bar title fades in once it scrolls away.
+  document.body.classList.toggle('large', nav && !back);
+  $('#largeTitle').textContent = title;
+  onScrollChrome();
   document.title = title === 'Invoice Maker' ? title : `${title} · Invoice Maker`;
 }
+function onScrollChrome() { document.body.classList.toggle('scrolled', window.scrollY > 36); }
+window.addEventListener('scroll', onScrollChrome, { passive: true });
 $('#backBtn').onclick = () => {
   if (history.length > 1 && sessionStorage.getItem('im-nav')) history.back();
   else location.hash = '#/';
@@ -69,7 +75,7 @@ function pickDocType(onPick, title = 'New document') {
 // ------------------------------------------------------------------ documents list
 const docFilter = { status: 'all', type: 'all', q: '' };
 function docsView() {
-  setChrome({ fab: () => pickDocType(t => location.hash = `#/new/${t}`) });
+  setChrome({ title: 'Documents', fab: () => pickDocType(t => location.hash = `#/new/${t}`) });
   const all = live(), cur = S.settings().currency;
   // Totals per currency; the default currency is always shown first.
   const sums = { unpaid: { [cur]: 0 }, overdue: { [cur]: 0 }, paid: { [cur]: 0 } };
@@ -389,7 +395,7 @@ function editView(id, newType, custId) {
       <h2>Notes</h2>
       <label class="field"><span>Terms &amp; conditions</span><textarea data-f="terms" rows="3" placeholder="e.g. Payment due within 14 days">${esc(d.terms)}</textarea></label>
       <label class="field"><span>Footer</span><input data-f="footer" value="${esc(d.footer)}"></label>
-      <label class="check"><input type="checkbox" data-f="showSignature" ${d.showSignature ? 'checked' : ''} ${s.signature ? '' : 'disabled'}> Show my signature ${s.signature ? '' : '<span class="small muted">(add one in Settings)</span>'}</label>
+      <label class="check"><input type="checkbox" data-f="showSignature" ${d.showSignature ? 'checked' : ''} ${s.signature ? '' : 'disabled'}> <span>Show my signature${s.signature ? '' : '<br><span class="small muted">Add one in Settings</span>'}</span></label>
       <label class="field"><span>Currency</span><select data-f="currency">${currencyOptions(d.currency)}</select></label>
     </div>
 
