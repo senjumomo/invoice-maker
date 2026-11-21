@@ -16,7 +16,8 @@ const routes = [
   [/^#\/edit\/(\w+)$/, id => editView(id), 'docs'],
   [/^#\/customers$/, customersView, 'customers'],
   [/^#\/customer\/(\w+)$/, customerView, 'customers'],
-  [/^#\/items$/, itemsView, 'items'],
+  [/^#\/lessons$/, lessonsView, 'lessons'],
+  [/^#\/items$/, itemsView, 'settings'],
   [/^#\/reports$/, reportsView, 'reports'],
   [/^#\/settings$/, settingsView, 'settings'],
 ];
@@ -623,6 +624,7 @@ function customerView(id) {
       ${c.phone ? `<div><a href="tel:${esc(c.phone)}">${esc(c.phone)}</a></div>` : ''}
       ${c.notes ? `<p class="small muted">${esc(c.notes)}</p>` : ''}
     </div>
+    ${lessonCard(c)}
     <div class="summary">
       <div class="card"><div class="label">Billed</div><div class="value">${money(st.billed)}</div></div>
       <div class="card"><div class="label">Balance</div><div class="value ${st.overdue ? 'bad' : ''}">${money(st.balance)}</div></div>
@@ -635,6 +637,12 @@ function customerView(id) {
   view.onclick = e => {
     const b = e.target.closest('[data-act]'); if (!b) return;
     if (b.dataset.act === 'new') pickDocType(t => location.hash = `#/new/${t}/${c.id}`);
+    if (b.dataset.act === 'billLessons') {
+      const ds = S.db().lessons.filter(l => l.customerId === c.id && S.isBillable(l)).map(l => l.date).sort();
+      const last = ds[ds.length - 1] || '';
+      generateSheet({ from: ds[0] || S.today(), to: S.today() > last ? S.today() : last, customerId: c.id });
+    }
+    if (b.dataset.act === 'editCust') editCustomerSheet(c);
     if (b.dataset.act === 'statement') {
       const rows = [['Document', 'Number', 'Date', 'Due date', 'Currency', 'Total', 'Paid', 'Balance', 'Status']];
       for (const d of [...docs].reverse()) { const t = totals(d); rows.push([DOC_TYPES[d.type].label, d.number, d.date, d.dueDate, d.currency, t.total, t.paid, t.balance, STATUS_LABEL[status(d, t)]]); }
@@ -643,23 +651,41 @@ function customerView(id) {
   };
 }
 
+function lessonCard(c) {
+  const ls = S.db().lessons.filter(l => l.customerId === c.id);
+  const open = ls.filter(S.isBillable);
+  const rate = num(c.rate);
+  const owed = open.reduce((a, l) => a + (l.status === 'cancelled' ? 0 : S.lessonHours(l) * rate), 0);
+  return `<div class="card list">
+    <button class="list-item plain" data-act="editCust">
+      <div class="main"><div class="title">Hourly rate</div><div class="sub">${esc(c.subject || 'Lesson')}</div></div>
+      <div class="amt">${rate ? money(rate) + '/h' : '<span class="muted">Not set</span>'}</div></button>
+    <button class="list-item plain" data-act="billLessons" ${open.length ? '' : 'disabled'}>
+      <div class="main"><div class="title">Lessons not invoiced</div><div class="sub">${ls.length} lesson${ls.length === 1 ? '' : 's'} in total</div></div>
+      <div class="amt">${open.length ? `${open.length} · ${money(Math.round(owed * 100) / 100)}` : '<span class="muted">None</span>'}</div></button>
+  </div>`;
+}
+
 function editCustomerSheet(c) {
-  const isNew = !c; c = c ? { ...c } : { id: S.uid(), billTo: '', shipTo: '', email: '', phone: '', notes: '' };
+  const isNew = !c; c = c ? { ...c } : { id: S.uid(), billTo: '', shipTo: '', email: '', phone: '', notes: '', rate: '', subject: '' };
   const sh = openSheet(`<h3>${isNew ? 'New customer' : 'Edit customer'}</h3><div class="stack">
     <label class="field"><span>Name &amp; billing address</span><textarea id="c_bill" rows="3" placeholder="Customer name&#10;Address" autofocus>${esc(c.billTo)}</textarea></label>
     <label class="field"><span>Shipping address (optional)</span><textarea id="c_ship" rows="2">${esc(c.shipTo)}</textarea></label>
     <div class="grid2"><label class="field"><span>Email</span><input id="c_email" type="email" value="${esc(c.email)}"></label>
       <label class="field"><span>Phone</span><input id="c_phone" type="tel" value="${esc(c.phone)}"></label></div>
+    <div class="grid2"><label class="field"><span>Hourly rate</span><input id="c_rate" inputmode="decimal" placeholder="0.00" value="${c.rate ? esc(c.rate) : ''}"></label>
+      <label class="field"><span>Lesson name</span><input id="c_subject" placeholder="e.g. Maths lesson" value="${esc(c.subject || '')}"></label></div>
     <label class="field"><span>Notes</span><input id="c_notes" value="${esc(c.notes)}"></label></div>
     <div class="sheet-actions">${isNew ? '' : '<button class="btn danger" data-x="del">Delete</button>'}<button class="btn primary" data-x="save">Save</button></div>`);
   sh.onclick = async e => {
     const b = e.target.closest('[data-x]'); if (!b) return;
     if (b.dataset.x === 'del') {
       closeSheet();
-      if (await confirmSheet({ title: 'Delete customer?', body: 'Their documents are kept, but no longer linked to this customer.', ok: 'Delete', danger: true })) { S.deleteCustomer(c.id); location.hash = '#/customers'; }
+      if (await confirmSheet({ title: 'Delete customer?', body: 'Their documents are kept, but no longer linked to this customer. Their lessons are deleted.', ok: 'Delete', danger: true })) { S.deleteCustomer(c.id); location.hash = '#/customers'; }
       return;
     }
     c.billTo = $('#c_bill').value.trim(); c.shipTo = $('#c_ship').value.trim(); c.email = $('#c_email').value.trim(); c.phone = $('#c_phone').value.trim(); c.notes = $('#c_notes').value.trim();
+    c.rate = num($('#c_rate').value) || ''; c.subject = $('#c_subject').value.trim();
     if (!c.billTo) { toast('Enter a name'); return; }
     S.saveCustomer(c); closeSheet(); toast('Customer saved');
     if (isNew) location.hash = `#/customer/${c.id}`; else customerView(c.id);
@@ -800,11 +826,247 @@ function reportsView() {
   };
 }
 
+// ------------------------------------------------------------------ lessons calendar
+const STUDENT_COLORS = ['#007aff', '#34c759', '#ff9500', '#af52de', '#ff2d55', '#30b0c7', '#ffcc00', '#5856d6', '#a2845e', '#ff3b30'];
+// Each student gets the next colour in the order they were added, so the first ten never clash.
+const studentColor = id => { const i = S.db().customers.findIndex(c => c.id === id); return i < 0 ? '#8e8e93' : STUDENT_COLORS[i % STUDENT_COLORS.length]; };
+const r2 = n => Math.round(n * 100) / 100;
+const fmtHours = h => `${r2(h)} h`;
+const monthOf = date => date.slice(0, 7);
+const monthStart = ym => `${ym}-01`;
+const monthEnd = ym => { const [y, m] = ym.split('-').map(Number); return S.iso(new Date(y, m, 0)); };
+const shiftMonth = (ym, n) => { const [y, m] = ym.split('-').map(Number); return S.iso(new Date(y, m - 1 + n, 1)).slice(0, 7); };
+const lessonAmount = l => { const c = S.getCustomer(l.customerId); return l.status === 'cancelled' ? 0 : r2(S.lessonHours(l) * num(c?.rate)); };
+const studentName = id => { const c = S.getCustomer(id); return c ? S.customerName(c) : 'Unknown student'; };
+const lessonBadge = l => {
+  const inv = S.lessonInvoice(l);
+  if (inv) return `<span class="badge paid">Invoiced</span>`;
+  if (l.status === 'cancelled') return `<span class="badge unpaid">Cancelled</span>`;
+  if (l.status === 'charged') return `<span class="badge partial">Late cancel</span>`;
+  return `<span class="badge draft">To bill</span>`;
+};
+
+const cal = { month: monthOf(S.today()), sel: S.today() };
+function lessonsView() {
+  setChrome({ title: 'Lessons', fab: () => lessonSheet(null, cal.sel) });
+  const draw = () => {
+    const ym = cal.month, [y, m] = ym.split('-').map(Number);
+    const first = new Date(y, m - 1, 1), offset = (first.getDay() + 6) % 7; // weeks start on Monday
+    const start = S.addDays(monthStart(ym), -offset);
+    const days = Array.from({ length: 42 }, (_, i) => S.addDays(start, i));
+    while (days.length > 35 && days.slice(-7).every(d => monthOf(d) !== ym)) days.splice(-7); // drop a trailing week outside the month
+    const t = S.today();
+    const monthLessons = S.db().lessons.filter(l => monthOf(l.date) === ym);
+    const byDay = {}; for (const l of monthLessons.concat(S.db().lessons.filter(l => monthOf(l.date) !== ym && days.includes(l.date)))) (byDay[l.date] ||= []).push(l);
+    const billed = monthLessons.filter(l => l.status !== 'cancelled');
+    const unbilled = monthLessons.filter(S.isBillable);
+    const dayLessons = S.lessonsOn(cal.sel);
+    const title = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const dow = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: 'narrow' }));
+    view.innerHTML = `
+      <div class="card cal" id="cal">
+        <div class="cal-head">
+          <div class="cal-title">${esc(title)}</div>
+          ${ym !== monthOf(t) ? `<button class="btn ghost" data-cal="today">Today</button>` : ''}
+          <button class="icon-btn" data-cal="-1" aria-label="Previous month">${icon('left')}</button>
+          <button class="icon-btn" data-cal="1" aria-label="Next month">${icon('right')}</button>
+        </div>
+        <div class="cal-grid">
+          ${dow.map(d => `<div class="cal-dow">${d}</div>`).join('')}
+          ${days.map(d => {
+            const ls = byDay[d] || [];
+            return `<button class="cal-day ${monthOf(d) !== ym ? 'out' : ''} ${d === t ? 'today' : ''} ${d === cal.sel ? 'sel' : ''}" data-day="${d}" aria-label="${d}${ls.length ? `, ${ls.length} lesson${ls.length > 1 ? 's' : ''}` : ''}">
+              <span>${+d.slice(8)}</span><i class="cal-dots">${ls.slice(0, 4).map(l => `<b style="background:${studentColor(l.customerId)};${l.status === 'cancelled' ? 'opacity:.35' : ''}"></b>`).join('')}</i></button>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <div class="section-title">${esc(fmtDate(cal.sel))}</div>
+      ${dayLessons.length ? `<div class="card list">${dayLessons.map(l => `
+        <div class="list-item" data-lesson="${l.id}">
+          <span class="lesson-bar" style="background:${studentColor(l.customerId)}"></span>
+          <div class="main"><div class="title ellipsis">${esc(studentName(l.customerId))}</div>
+            <div class="sub">${esc(l.start)}–${esc(l.end)} · ${fmtHours(S.lessonHours(l))}${l.seriesId ? ` · ${icon('repeat', 'style="width:13px;height:13px;vertical-align:-2px"')}` : ''}${l.note ? ` · ${esc(l.note)}` : ''}</div></div>
+          <div class="amt">${l.status === 'cancelled' ? '' : money(lessonAmount(l))}<br>${lessonBadge(l)}</div>
+        </div>`).join('')}</div>`
+        : `<div class="card list"><button class="list-item add-lesson" data-act="add">${icon('plus')}<span>Add a lesson on this day</span></button></div>`}
+
+      <div class="summary">
+        <div class="card"><div class="label">Lessons this month</div><div class="value">${billed.length}</div></div>
+        <div class="card"><div class="label">Hours</div><div class="value">${r2(billed.reduce((a, l) => a + S.lessonHours(l), 0))}</div></div>
+        <div class="card"><div class="label">Earned</div><div class="value">${money(billed.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
+        <div class="card"><div class="label">Not invoiced yet</div><div class="value ${unbilled.length ? 'bad' : ''}">${money(unbilled.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
+      </div>
+      <button class="btn primary block" data-act="generate">${icon('doc')}Generate invoices</button>`;
+  };
+  draw();
+
+  view.onclick = e => {
+    const c = e.target.closest('[data-cal]');
+    if (c) { const v = c.dataset.cal; cal.month = v === 'today' ? monthOf(S.today()) : shiftMonth(cal.month, +v); if (v === 'today') cal.sel = S.today(); draw(); return; }
+    const d = e.target.closest('[data-day]');
+    if (d) { cal.sel = d.dataset.day; if (monthOf(cal.sel) !== cal.month) cal.month = monthOf(cal.sel); draw(); return; }
+    const l = e.target.closest('[data-lesson]');
+    if (l) { lessonSheet(S.getLesson(l.dataset.lesson), null, draw); return; }
+    const a = e.target.closest('[data-act]')?.dataset.act;
+    if (a === 'add') lessonSheet(null, cal.sel, draw);
+    if (a === 'generate') generateSheet({ from: monthStart(cal.month), to: monthEnd(cal.month) });
+  };
+  // Swipe left/right on the calendar to change month.
+  let x0 = null;
+  view.ontouchstart = e => { x0 = e.target.closest('#cal') ? e.touches[0].clientX : null; };
+  view.ontouchend = e => {
+    if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 60) { cal.month = shiftMonth(cal.month, dx < 0 ? 1 : -1); draw(); }
+  };
+  $('#fab').onclick = () => lessonSheet(null, cal.sel, draw);
+}
+
+function lessonSheet(l, date, onDone = () => {}) {
+  const customers = [...S.db().customers].sort((a, b) => S.customerName(a).localeCompare(S.customerName(b)));
+  if (!customers.length) {
+    toast('Add a student in Customers first'); editCustomerSheet(); return;
+  }
+  const isNew = !l;
+  if (isNew) {
+    const cid = customers[0].id, last = S.lastLessonOf(cid);
+    l = { id: S.uid(), customerId: cid, date, start: last?.start || '15:00', end: last?.end || '16:00', status: 'lesson', note: '', seriesId: null, invoiceId: null };
+  } else l = { ...l };
+  const inv = S.lessonInvoice(l);
+  const sh = openSheet(`<h3>${isNew ? 'New lesson' : 'Edit lesson'}</h3><div class="stack">
+    ${inv ? `<p class="small muted" style="margin:0">Billed on <a href="#/doc/${inv.id}">${esc(DOC_TYPES[inv.type].label)} ${esc(inv.number)}</a>. Changes here won’t update that invoice.</p>` : ''}
+    <label class="field"><span>Student</span><select id="l_cust">${customers.map(c => `<option value="${c.id}" ${c.id === l.customerId ? 'selected' : ''}>${esc(S.customerName(c))}</option>`).join('')}</select></label>
+    <label class="field"><span>Date</span><input id="l_date" type="date" value="${esc(l.date)}"></label>
+    <div class="grid2"><label class="field"><span>Start</span><input id="l_start" type="time" value="${esc(l.start)}"></label>
+      <label class="field"><span>End</span><input id="l_end" type="time" value="${esc(l.end)}"></label></div>
+    <p class="small muted" id="l_sum" style="margin:0 0 0 4px"></p>
+    <label class="field"><span>Status</span><select id="l_status">${Object.entries(S.LESSON_STATUS).map(([k, v]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label class="field"><span>Note (optional)</span><input id="l_note" value="${esc(l.note)}" placeholder="e.g. Algebra revision"></label>
+    ${isNew ? `<label class="check"><input type="checkbox" id="l_rep"> <span>Repeat every week</span></label>
+      <label class="field hidden" id="l_untilF"><span>Until</span><input id="l_until" type="date" value="${S.addDays(date, 7 * 12)}"></label>` : ''}
+  </div>
+  <div class="sheet-actions">${isNew ? '' : '<button class="btn danger" data-x="del">Delete</button>'}<button class="btn primary" data-x="save">Save</button></div>`);
+
+  const sum = () => {
+    const tmp = { start: $('#l_start', sh).value, end: $('#l_end', sh).value };
+    const h = S.lessonHours(tmp), c = S.getCustomer($('#l_cust', sh).value);
+    $('#l_sum', sh).textContent = h <= 0 ? 'End time must be after the start time.'
+      : num(c?.rate) ? `${fmtHours(h)} × ${money(num(c.rate))}/h = ${money(r2(h * num(c.rate)))}` : `${fmtHours(h)} · no hourly rate set for this student yet (edit them in Customers)`;
+  };
+  sum();
+  sh.oninput = sh.onchange = e => {
+    if (e.target.id === 'l_cust' && isNew) { // reuse that student's usual lesson time
+      const last = S.lastLessonOf(e.target.value);
+      if (last) { $('#l_start', sh).value = last.start; $('#l_end', sh).value = last.end; }
+    }
+    if (e.target.id === 'l_start' && isNew) { // keep the same lesson length when the start moves
+      const len = Math.max(30, S.lessonHours(l) * 60), [h, m] = e.target.value.split(':').map(Number), endM = h * 60 + m + len;
+      if (!isNaN(endM) && endM < 24 * 60) $('#l_end', sh).value = `${String(Math.floor(endM / 60)).padStart(2, '0')}:${String(endM % 60).padStart(2, '0')}`;
+    }
+    if (e.target.id === 'l_rep') $('#l_untilF', sh).classList.toggle('hidden', !e.target.checked);
+    if (['l_start', 'l_end'].includes(e.target.id)) { l.start = $('#l_start', sh).value; l.end = $('#l_end', sh).value; }
+    sum();
+  };
+  sh.onclick = async e => {
+    const b = e.target.closest('[data-x]'); if (!b) return;
+    if (b.dataset.x === 'del') {
+      if (l.seriesId) {
+        const m = openSheet(`<h3>Delete lesson</h3><div class="menu">
+          <button data-y="one">${icon('trash')}<span>Delete this lesson only</span></button>
+          <button data-y="all">${icon('repeat')}<span>Delete this and all following</span></button></div>
+          <div class="sheet-actions"><button class="btn" data-y="no">Cancel</button></div>`);
+        m.onclick = ev => {
+          const y = ev.target.closest('[data-y]')?.dataset.y; if (!y) return;
+          closeSheet(); if (y === 'no') return;
+          if (y === 'one') S.deleteLesson(l.id); else S.deleteSeriesFrom(l);
+          toast('Deleted'); onDone();
+        };
+        return;
+      }
+      closeSheet();
+      if (await confirmSheet({ title: 'Delete lesson?', ok: 'Delete', danger: true })) { S.deleteLesson(l.id); toast('Deleted'); onDone(); }
+      return;
+    }
+    Object.assign(l, {
+      customerId: $('#l_cust', sh).value, date: $('#l_date', sh).value, start: $('#l_start', sh).value, end: $('#l_end', sh).value,
+      status: $('#l_status', sh).value, note: $('#l_note', sh).value.trim(),
+    });
+    if (!l.date) { toast('Pick a date'); return; }
+    if (S.lessonHours(l) <= 0) { toast('End time must be after the start time'); return; }
+    if (isNew && $('#l_rep', sh).checked) {
+      const until = $('#l_until', sh).value;
+      if (!until || until < l.date) { toast('Pick an end date for the repeats'); return; }
+      const n = S.addWeekly(l, until); closeSheet(); toast(`${n} weekly lessons added`);
+    } else { S.saveLesson(l); closeSheet(); toast('Lesson saved'); }
+    cal.sel = l.date; cal.month = monthOf(l.date);
+    onDone();
+  };
+}
+
+// Builds an invoice for one student with one line per lesson (date, time, hours × hourly rate).
+function invoiceFromLessons(c, lessons) {
+  const d = S.newDoc('invoice');
+  Object.assign(d, { customerId: c.id, billTo: c.billTo, shipTo: c.shipTo || '', email: c.email || '' });
+  const what = (c.subject || '').trim() || 'Lesson';
+  d.items = [...lessons].sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start)).map(l => ({
+    id: S.uid(), date: l.date, qty: r2(S.lessonHours(l)), price: num(c.rate), taxes: [],
+    desc: `${what}, ${l.start}–${l.end}${l.status === 'charged' ? ' (late cancellation)' : ''}${l.note ? `\n${l.note}` : ''}`,
+  }));
+  d.lessonIds = lessons.map(l => l.id);
+  return d;
+}
+
+function generateSheet({ from, to, customerId = null }) {
+  const sh = openSheet(`<h3>Generate invoices</h3>
+    <div class="grid2"><label class="field"><span>From</span><input type="date" id="g_from" value="${from}"></label>
+      <label class="field"><span>To</span><input type="date" id="g_to" value="${to}"></label></div>
+    <div id="g_list" style="margin-top:14px"></div>
+    <div class="sheet-actions"><button class="btn" data-x="no">Cancel</button><button class="btn primary" data-x="go" id="g_go">Create</button></div>`);
+  let groups = [];
+  const draw = () => {
+    const f = $('#g_from', sh).value, t = $('#g_to', sh).value;
+    const ls = S.db().lessons.filter(l => S.isBillable(l) && l.date >= f && l.date <= t && (!customerId || l.customerId === customerId));
+    const by = {}; for (const l of ls) (by[l.customerId] ||= []).push(l);
+    groups = Object.entries(by).map(([cid, lessons]) => ({ c: S.getCustomer(cid), lessons })).filter(g => g.c)
+      .sort((a, b) => S.customerName(a.c).localeCompare(S.customerName(b.c)));
+    $('#g_list', sh).innerHTML = groups.length ? `<div class="menu">${groups.map((g, i) => {
+      const h = g.lessons.reduce((a, l) => a + S.lessonHours(l), 0);
+      return `<label class="check"><span><b>${esc(S.customerName(g.c))}</b><div class="small muted">${g.lessons.length} lesson${g.lessons.length > 1 ? 's' : ''} · ${fmtHours(h)} · ${num(g.c.rate) ? money(g.lessons.reduce((a, l) => a + lessonAmount(l), 0)) : 'no hourly rate set'}</div></span>
+        <input type="checkbox" data-g="${i}" checked></label>`;
+    }).join('')}</div>` : `<p class="muted" style="text-align:center">No lessons to invoice in this period.</p>`;
+    count();
+  };
+  const count = () => {
+    const n = $$('[data-g]:checked', sh).length;
+    $('#g_go', sh).disabled = !n;
+    $('#g_go', sh).textContent = n === 1 ? 'Create & review' : `Create ${n || ''} invoice${n === 1 ? '' : 's'}`;
+  };
+  draw();
+  sh.oninput = sh.onchange = e => { if (e.target.type === 'date') draw(); else count(); };
+  sh.onclick = e => {
+    const b = e.target.closest('[data-x]'); if (!b) return;
+    if (b.dataset.x === 'no') { closeSheet(); return; }
+    const picked = $$('[data-g]:checked', sh).map(x => groups[+x.dataset.g]);
+    if (!picked.length) return;
+    closeSheet();
+    if (picked.length === 1) { // open it in the editor to check before saving
+      pendingDraft = invoiceFromLessons(picked[0].c, picked[0].lessons);
+      location.hash = '#/new/invoice';
+      return;
+    }
+    for (const g of picked) S.saveDoc(invoiceFromLessons(g.c, g.lessons));
+    toast(`${picked.length} invoices created`);
+    location.hash = '#/';
+  };
+}
+
 // ------------------------------------------------------------------ settings
 function settingsView() {
   const s = S.settings(), b = s.business;
   setChrome({ title: 'Settings' });
   view.innerHTML = `
+    <div class="card list"><a class="list-item" href="#/items"><span class="avatar" style="background:var(--primary)">${icon('box', 'style="width:22px;height:22px"')}</span>
+      <div class="main"><div class="title">Saved items &amp; taxes</div></div></a></div>
     <div class="card section stack">
       <h2>Your business</h2>
       <label class="field"><span>Business or your name</span><input data-b="name" value="${esc(b.name)}"></label>

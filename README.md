@@ -7,6 +7,7 @@ A mobile-first web app for creating invoices, quotes, receipts and other busines
 - **11 document types:** invoice, tax invoice, proforma invoice, receipt, sales receipt, credit memo, credit note, quote, estimate, purchase order and delivery note. Each type gets its own automatic numbering, and a document can be copied or converted to another type (for example, quote → invoice).
 - **Items:** line items with quantity and unit price, up to two taxes per item (including compound taxes), a discount % and shipping. Items you use often can be saved and reused.
 - **Customers:** customers are created automatically from the "Bill To" field, with balances, paid/unpaid/overdue filters and a CSV statement for each customer.
+- **Lessons:** a calendar for logging lessons (student, date, start and end time), with weekly repeats and cancellations (charged or not). Each customer has an hourly rate, and **Generate invoices** builds one invoice per student for a period, with one line per lesson. Billed lessons are marked so they're never invoiced twice.
 - **Payments:** documents can be marked as paid or partly paid, with a date and method. Overdue documents are tracked, and paid documents can show an optional PAID stamp.
 - **Recurring documents:** daily, weekly, every 2 weeks, monthly, every 2 months, quarterly or yearly. A new copy is created when you open the app on or after the due date.
 - **Output:** PDF download, sharing through the phone's share sheet (which attaches the PDF in Gmail, WhatsApp and similar apps), printing, and email drafts.

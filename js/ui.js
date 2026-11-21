@@ -23,6 +23,8 @@ const ICONS = {
   box: '<path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/>',
   doc: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>',
   down: '<path d="M6 9l6 6 6-6"/>',
+  left: '<path d="M15 18l-6-6 6-6"/>',
+  right: '<path d="M9 18l6-6-6-6"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   csv: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M9.5 12l5 6M14.5 12l-5 6"/>',
 };

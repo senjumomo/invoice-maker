@@ -329,6 +329,35 @@ a.list-item::before {
 .tpl .mini { height: 120px; overflow: hidden; border-radius: 8px; background: #fff; position: relative; margin-bottom: 6px; }
 .tpl .mini .paper { position: absolute; top: 0; left: 0; transform-origin: 0 0; pointer-events: none; }
 
+/* ---------- lessons calendar ---------- */
+.cal { padding: 10px 8px 12px; margin-bottom: 20px; }
+.cal-head { display: flex; align-items: center; padding: 0 2px 4px 10px; }
+.cal-title { flex: 1; font-size: 20px; font-weight: 700; }
+.cal-head .icon-btn { color: var(--primary); width: 40px; height: 40px; }
+.cal-head .btn.ghost { min-height: 36px; font-size: 15px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.cal-dow { text-align: center; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 0 6px; }
+.cal-day {
+  border: 0; background: none; height: 48px; padding: 2px 0 0; cursor: pointer; color: var(--text);
+  display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 17px;
+}
+.cal-day span { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-variant-numeric: tabular-nums; transition: background-color .2s, transform .2s; }
+.cal-day:active span { transform: scale(.9); }
+.cal-day.out { color: var(--tertiary); }
+.cal-day.today span { color: var(--primary); font-weight: 700; }
+.cal-day.sel span { background: var(--text); color: var(--bg); font-weight: 600; }
+.cal-day.sel.today span { background: var(--primary); color: #fff; }
+.cal-dots { display: flex; gap: 3px; height: 6px; }
+.cal-dots b { width: 6px; height: 6px; border-radius: 50%; }
+.lesson-bar { width: 4px; align-self: stretch; border-radius: 2px; flex: none; margin: 2px 0; }
+.list-item:has(.lesson-bar)::after { left: 32px; }
+button.list-item { width: 100%; border: 0; background: none; text-align: left; font: inherit; color: inherit; }
+button.list-item:disabled { cursor: default; }
+button.list-item:disabled:active { background: none; }
+.add-lesson { color: var(--primary) !important; font-size: 17px !important; min-height: 52px; }
+.add-lesson svg { width: 22px; height: 22px; }
+.summary + .btn.block { margin-bottom: 8px; }
+
 /* ---------- preview ---------- */
 .preview-wrap { overflow: hidden; border-radius: 8px; box-shadow: 0 2px 12px rgba(0, 0, 0, .1); background: #fff; margin: 0 auto; }
 .preview-wrap .paper { transform-origin: 0 0; }

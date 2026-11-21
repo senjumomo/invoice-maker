@@ -42,7 +42,7 @@ const defaults = () => ({
     paidStamp: true, showSignature: false, theme: 'auto',
     counters: {},
   },
-  docs: [], customers: [], items: [], taxes: [],
+  docs: [], customers: [], items: [], taxes: [], lessons: [],
 });
 
 let state = load();
@@ -122,6 +122,8 @@ export function saveDoc(doc) {
   }
   doc.updatedAt = Date.now();
   upsertCustomerFromDoc(doc);
+  // An invoice generated from lessons marks those lessons as billed.
+  for (const id of doc.lessonIds || []) { const l = getLesson(id); if (l) l.invoiceId = doc.id; }
   save();
   return doc;
 }
@@ -135,6 +137,7 @@ export function copyDoc(doc, type = doc.type) {
     recurring: null, sentAt: null, deletedAt: null, createdAt: Date.now(), updatedAt: Date.now(), isNew: true,
   });
   c.items = c.items.map(it => ({ ...it, id: uid() }));
+  delete c.lessonIds; // a copy doesn't bill the original lessons again
   return c;
 }
 
@@ -158,6 +161,7 @@ export function saveCustomer(c) {
 export function deleteCustomer(id) {
   state.customers = state.customers.filter(c => c.id !== id);
   state.docs.forEach(d => { if (d.customerId === id) d.customerId = ''; });
+  state.lessons = state.lessons.filter(l => l.customerId !== id);
   save();
 }
 export function customerName(c) { return (c.billTo || '').split('\n')[0].trim() || 'Unnamed customer'; }
@@ -173,6 +177,38 @@ function upsertCustomerFromDoc(doc) {
   if (!c) { c = { id: uid(), billTo: '', shipTo: '', email: '', phone: '', notes: '' }; state.customers.push(c); }
   c.billTo = billTo; if (doc.shipTo) c.shipTo = doc.shipTo; if (doc.email) c.email = doc.email;
   doc.customerId = c.id;
+}
+
+// ---- lessons ----
+// A lesson: { id, customerId, date, start: 'HH:MM', end: 'HH:MM', status, note, seriesId, invoiceId }
+// status: 'lesson' (billable), 'cancelled' (not charged) or 'charged' (late cancellation, billed).
+export const LESSON_STATUS = { lesson: 'Lesson', charged: 'Late cancellation (charged)', cancelled: 'Cancelled (not charged)' };
+const mins = t => { const [h, m] = String(t || '0:0').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+export function lessonHours(l) { return Math.max(0, mins(l.end) - mins(l.start)) / 60; }
+export function getLesson(id) { return state.lessons.find(l => l.id === id); }
+// The invoice a lesson was billed on, or null if it's unbilled (or that invoice was deleted).
+export function lessonInvoice(l) { const d = l.invoiceId && getDoc(l.invoiceId); return d && !d.deletedAt ? d : null; }
+export function isBillable(l) { return l.status !== 'cancelled' && !lessonInvoice(l); }
+export function lessonsOn(date) { return state.lessons.filter(l => l.date === date).sort((a, b) => a.start.localeCompare(b.start)); }
+export function lastLessonOf(customerId) {
+  return state.lessons.filter(l => l.customerId === customerId).sort((a, b) => (b.date + b.start).localeCompare(a.date + a.start))[0];
+}
+export function saveLesson(l) {
+  const i = state.lessons.findIndex(x => x.id === l.id);
+  if (i >= 0) state.lessons[i] = l; else state.lessons.push(l);
+  save(); return l;
+}
+// Adds a lesson every week from its date up to and including `until`.
+export function addWeekly(l, until) {
+  const seriesId = uid(); let date = l.date, n = 0;
+  while (date <= until && n++ < 104) { state.lessons.push({ ...l, id: uid(), date, seriesId }); date = addDays(date, 7); }
+  save(); return n;
+}
+export function deleteLesson(id) { state.lessons = state.lessons.filter(l => l.id !== id); save(); }
+// Deletes this lesson and later unbilled lessons in the same weekly series.
+export function deleteSeriesFrom(l) {
+  state.lessons = state.lessons.filter(x => !(x.seriesId === l.seriesId && x.date >= l.date && !lessonInvoice(x)) && x.id !== l.id);
+  save();
 }
 
 // ---- saved items & taxes ----
