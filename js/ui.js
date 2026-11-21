@@ -25,6 +25,8 @@ const ICONS = {
   down: '<path d="M6 9l6 6 6-6"/>',
   left: '<path d="M15 18l-6-6 6-6"/>',
   right: '<path d="M9 18l6-6-6-6"/>',
+  up: '<path d="M6 15l6-6 6 6"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   csv: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M9.5 12l5 6M14.5 12l-5 6"/>',
 };

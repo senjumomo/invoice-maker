@@ -10,15 +10,16 @@ let leaveGuard = null; // returns true if it's OK to leave the current view
 
 // ------------------------------------------------------------------ router
 const routes = [
-  [/^#?\/?$/, docsView, 'docs'],
-  [/^#\/doc\/(\w+)$/, docView, 'docs'],
-  [/^#\/new\/(\w+)(?:\/(\w+))?$/, (type, cust) => editView(null, type, cust), 'docs'],
-  [/^#\/edit\/(\w+)$/, id => editView(id), 'docs'],
+  [/^#?\/?$/, lessonsView, 'today'],
+  [/^#\/lessons$/, lessonsView, 'today'],
+  [/^#\/invoices$/, docsView, 'invoices'],
+  [/^#\/doc\/(\w+)$/, docView, 'invoices'],
+  [/^#\/new\/(\w+)(?:\/(\w+))?$/, (type, cust) => editView(null, type, cust), 'invoices'],
+  [/^#\/edit\/(\w+)$/, id => editView(id), 'invoices'],
   [/^#\/customers$/, customersView, 'customers'],
   [/^#\/customer\/(\w+)$/, customerView, 'customers'],
-  [/^#\/lessons$/, lessonsView, 'lessons'],
   [/^#\/items$/, itemsView, 'settings'],
-  [/^#\/reports$/, reportsView, 'reports'],
+  [/^#\/reports$/, reportsView, 'invoices'],
   [/^#\/settings$/, settingsView, 'settings'],
 ];
 let lastHash = location.hash;
@@ -65,6 +66,83 @@ const customerLabel = d => (d.billTo || '').split('\n')[0].trim() || 'No custome
 const badge = st => st === 'none' ? '' : `<span class="badge ${st}">${STATUS_LABEL[st]}</span>`;
 const empty = (ico, text) => `<div class="empty">${icon(ico)}<div>${text}</div></div>`;
 const live = () => S.db().docs.filter(d => !d.deletedAt);
+const simple = () => S.settings().simple !== false; // tutor-friendly: fewer fields, + makes an invoice
+
+// iOS-style swipe-to-reveal actions. Rows look like:
+// <div class="swipe" data-id><div class="swipe-acts"><button data-swipe="x">…</button></div><div class="swipe-row">…</div></div>
+// onAct(id, action) runs when an action button is tapped.
+function enableSwipe(root, onAct) {
+  let row = null, x0 = 0, y0 = 0, dx = 0, dragging = false, open = null, w = 0, suppress = false;
+  const close = r => { if (r) r.style.transform = ''; if (open === r) open = null; };
+  root.addEventListener('pointerdown', e => {
+    const r = e.target.closest('.swipe-row');
+    if (e.target.closest('[data-swipe]')) return;
+    suppress = false;
+    if (open && open !== r) { close(open); suppress = true; }
+    if (!r || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    row = r; x0 = e.clientX; y0 = e.clientY; dx = 0; dragging = false;
+    w = r.parentElement.querySelector('.swipe-acts').offsetWidth;
+  });
+  root.addEventListener('pointermove', e => {
+    if (!row) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!dragging) {
+      if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { row = null; return; } // vertical scroll wins
+      if (Math.abs(mx) < 10) return;
+      dragging = true; row.style.transition = 'none';
+      try { row.setPointerCapture(e.pointerId); } catch {}
+    }
+    dx = Math.min(0, Math.max(-w - 30, (row === open ? -w : 0) + mx));
+    row.style.transform = `translateX(${dx}px)`;
+  });
+  const end = () => {
+    if (!row) return;
+    row.style.transition = '';
+    if (dragging) {
+      suppress = true;
+      if (dx < -w / 2) { row.style.transform = `translateX(${-w}px)`; open = row; } else close(row);
+    }
+    row = null;
+  };
+  root.addEventListener('pointerup', end);
+  root.addEventListener('pointercancel', end);
+  root.addEventListener('click', e => {
+    const a = e.target.closest('[data-swipe]');
+    if (a) { e.preventDefault(); e.stopPropagation(); const id = a.closest('.swipe').dataset.id; close(open); onAct(id, a.dataset.swipe); return; }
+    if (suppress) { e.preventDefault(); e.stopPropagation(); suppress = false; return; } // the click that ends a drag
+    if (open && e.target.closest('.swipe-row') === open) { e.preventDefault(); e.stopPropagation(); close(open); } // tap closes an open row
+  }, true);
+}
+
+// Payment reminder: WhatsApp message to the student's number, or share the PDF with the message.
+function remindSheet(d, t, st) {
+  const c = S.getCustomer(d.customerId), type = DOC_TYPES[d.type];
+  const name = (d.billTo || '').split('\n')[0].trim().split(/\s+/)[0] || 'there';
+  const me = (d.from || '').split('\n')[0].trim();
+  const due = d.dueDate ? (st === 'overdue' ? `was due on ${fmtDate(d.dueDate)}` : `is due on ${fmtDate(d.dueDate)}`) : 'is still outstanding';
+  const msg = `Hi ${name}, just a friendly reminder that ${type.label.toLowerCase()} ${d.number} for ${money(t.balance, d.currency)} ${due}. Thank you!${me ? `\n${me}` : ''}`;
+  const sh = openSheet(`<h3>Payment reminder</h3><div class="stack">
+      <label class="field"><span>WhatsApp number</span><input id="rm_phone" type="tel" value="${esc(c?.phone || '')}" placeholder="e.g. 082 123 4567"></label>
+      <label class="field"><span>Message</span><textarea id="rm_msg" rows="5">${esc(msg)}</textarea></label>
+      <p class="small muted" style="margin:0">“WhatsApp” opens a chat with this message. “Share with PDF” attaches the invoice too; pick WhatsApp in the share menu.</p>
+    </div>
+    <div class="sheet-actions"><button class="btn" data-x="share">${icon('share')}Share with PDF</button><button class="btn primary" data-x="wa">WhatsApp</button></div>`);
+  sh.onclick = async e => {
+    const b = e.target.closest('[data-x]'); if (!b) return;
+    const phone = $('#rm_phone', sh).value.trim(), text = $('#rm_msg', sh).value;
+    if (c && phone && !c.phone) { c.phone = phone; S.save(); }
+    closeSheet();
+    if (b.dataset.x === 'wa') {
+      let digits = phone.replace(/\D/g, '');
+      if (digits.startsWith('0') && S.settings().locale === 'en-ZA') digits = '27' + digits.slice(1); // local SA number → international
+      window.open(`https://wa.me/${digits}?text=${encodeURIComponent(text)}`, '_blank');
+    } else {
+      toast('Creating PDF…', 60000);
+      try { const r = await sharePDF(d, text); toast(r === 'shared' ? 'Shared' : r === 'downloaded' ? 'Sharing isn’t supported here, so the PDF was downloaded' : 'Cancelled'); }
+      catch (err) { toast(err.message); }
+    }
+  };
+}
 
 // ------------------------------------------------------------------ new-document type picker
 function pickDocType(onPick, title = 'New document') {
@@ -74,9 +152,11 @@ function pickDocType(onPick, title = 'New document') {
 }
 
 // ------------------------------------------------------------------ documents list
-const docFilter = { status: 'all', type: 'all', q: '' };
+const docFilter = { status: 'unpaid', type: 'all', q: '' };
 function docsView() {
-  setChrome({ title: 'Documents', fab: () => pickDocType(t => location.hash = `#/new/${t}`) });
+  setChrome({ title: 'Invoices', actions: `<button class="icon-btn" aria-label="Reports">${icon('chart')}</button>`,
+    fab: () => simple() ? location.hash = '#/new/invoice' : pickDocType(t => location.hash = `#/new/${t}`) });
+  $('#topActions').onclick = () => location.hash = '#/reports';
   const all = live(), cur = S.settings().currency;
   // Totals per currency; the default currency is always shown first.
   const sums = { unpaid: { [cur]: 0 }, overdue: { [cur]: 0 }, paid: { [cur]: 0 } };
@@ -100,7 +180,7 @@ function docsView() {
       <div class="card"><div class="label">Paid</div><div class="value good">${show('paid')}</div></div>
       <div class="card"><div class="label">Documents</div><div class="value">${all.length}</div></div>
     </div>
-    <div class="search">${icon('search')}<input class="input" id="q" type="search" placeholder="Search customer, number or item" value="${esc(docFilter.q)}"></div>
+    <div class="search">${icon('search')}<input class="input" id="q" type="search" placeholder="Search student, number or item" value="${esc(docFilter.q)}"></div>
     <div class="chips" id="statusChips">${['all', 'unpaid', 'overdue', 'paid', 'trash'].map(s =>
       `<button class="chip ${docFilter.status === s ? 'active' : ''}" data-st="${s}">${s === 'all' ? 'All' : s === 'trash' ? 'Trash' : STATUS_LABEL[s]}</button>`).join('')}
       ${typesUsed.length > 1 ? `<select class="chip" id="typeSel"><option value="all">All types</option>${typesUsed.map(t =>
@@ -118,15 +198,26 @@ function docsView() {
       .sort((a, b) => (b.d.date || '').localeCompare(a.d.date || '') || b.d.createdAt - a.d.createdAt);
     $('#docList').innerHTML = rows.length ? `
       ${inTrash ? '<p class="small muted">Documents in Trash for more than 30 days are deleted automatically.</p>' : ''}
-      <div class="card list">${rows.map(({ d, t, st }) => `
-      <a class="list-item" href="#/doc/${d.id}">
+      <div class="card list">${rows.map(({ d, t, st }) => {
+        const acts = inTrash || !DOC_TYPES[d.type].payable ? '' : st === 'paid'
+          ? `<button data-swipe="unpaid" class="grey">Mark<br>unpaid</button>` : `<button data-swipe="paid" class="ok">Mark<br>paid</button>`;
+        const row = `<a class="list-item ${acts ? 'swipe-row' : ''}" href="#/doc/${d.id}" draggable="false">
         <div class="main"><div class="title ellipsis">${esc(customerLabel(d))}</div>
           <div class="sub">${DOC_TYPES[d.type].label} ${esc(d.number)} · ${fmtDate(d.date)}${d.recurring?.freq && !d.recurring.ended ? ' · ' + icon('repeat', 'style="width:13px;height:13px;vertical-align:-2px"') : ''}</div></div>
         <div class="amt">${money(t.total, d.currency)}<br>${inTrash ? '' : badge(st)}</div>
-      </a>`).join('')}</div>`
-      : empty('doc', inTrash ? 'Trash is empty.' : all.length ? 'No documents match.' : 'No documents yet.<br>Tap + to create your first invoice.');
+      </a>`;
+        return acts ? `<div class="swipe" data-id="${d.id}"><div class="swipe-acts">${acts}</div>${row}</div>` : row;
+      }).join('')}</div>
+      ${!inTrash && rows.some(r => DOC_TYPES[r.d.type].payable) ? '<p class="small muted hint">Swipe an invoice left to mark it paid.</p>' : ''}`
+      : empty('doc', inTrash ? 'Trash is empty.' : !all.length ? 'No invoices yet.<br>Tap + to create one, or generate them from your lessons on the Today tab.'
+        : docFilter.status === 'unpaid' ? 'Nothing unpaid right now.' : 'Nothing matches.');
   };
   draw();
+  enableSwipe($('#docList'), (id, act) => {
+    const d = S.getDoc(id); if (!d) return;
+    d.payment = act === 'paid' ? { amount: null, date: S.today(), method: 'Bank transfer' } : null;
+    S.save(); toast(act === 'paid' ? 'Marked as paid' : 'Marked as unpaid'); draw();
+  });
   view.oninput = e => { if (e.target.id === 'q') { docFilter.q = e.target.value; draw(); } };
   view.onchange = e => { if (e.target.id === 'typeSel') { docFilter.type = e.target.value; draw(); } };
   view.onclick = e => {
@@ -138,7 +229,7 @@ function docsView() {
 // ------------------------------------------------------------------ document detail / preview
 function docView(id) {
   const d = S.getDoc(id);
-  if (!d) { location.hash = '#/'; return; }
+  if (!d) { location.hash = '#/invoices'; return; }
   const type = DOC_TYPES[d.type], t = totals(d), st = status(d, t);
   setChrome({ title: `${type.label} ${d.number}`, back: true, nav: false });
   const m = v => money(v, d.currency);
@@ -151,7 +242,9 @@ function docView(id) {
   const r = d.recurring;
   const recur = r?.freq ? `<div class="status-banner unpaid">${icon('repeat')}<div class="grow">${r.ended ? 'Recurring schedule ended.' : `Repeats ${FREQ_LABELS[r.freq].toLowerCase()}. Next copy is created on ${fmtDate(r.next)}.`}</div></div>` : '';
   const sent = d.sentAt ? `<p class="small muted" style="margin:-4px 0 12px">Last sent ${new Date(d.sentAt).toLocaleString(S.settings().locale)}</p>` : '';
+  const canRemind = type.payable && !d.deletedAt && ['overdue', 'unpaid', 'partial'].includes(st);
   view.innerHTML = `${banner}${recur}${sent}
+    ${canRemind ? `<button class="btn block remind" data-act="remind">${icon('mail')}Send payment reminder</button>` : ''}
     <div class="action-grid">
       <button data-act="edit">${icon('edit')}Edit</button>
       <button data-act="share">${icon('share')}Share</button>
@@ -180,6 +273,7 @@ function docView(id) {
     payment: () => paymentSheet(d, t, () => docView(id)),
     copy: () => pickDocType(type => { const c = S.copyDoc(d, type); pendingDraft = c; location.hash = `#/new/${type}`; }, 'Copy as…'),
     more: () => moreSheet(d),
+    remind: () => remindSheet(d, t, st),
   };
   view.onclick = e => { const b = e.target.closest('[data-act]'); if (b) actions[b.dataset.act](); };
   onResize = () => fitPaper(pw);
@@ -265,9 +359,9 @@ function moreSheet(d) {
       if (DOC_TYPES[type].paidByDefault && !d.payment) d.payment = { amount: null, date: S.today(), method: 'Bank transfer' };
       S.save(); toast(`Converted to ${DOC_TYPES[type].label}`); docView(d.id);
     }, 'Convert to…');
-    if (x === 'trash') { S.trashDoc(d.id); toast('Moved to Trash'); location.hash = '#/'; }
+    if (x === 'trash') { S.trashDoc(d.id); toast('Moved to Trash'); location.hash = '#/invoices'; }
     if (x === 'destroy' && await confirmSheet({ title: 'Delete forever?', body: 'This document will be permanently deleted. This can’t be undone.', ok: 'Delete', danger: true })) {
-      S.destroyDoc(d.id); toast('Deleted'); location.hash = '#/';
+      S.destroyDoc(d.id); toast('Deleted'); location.hash = '#/invoices';
     }
   };
 }
@@ -328,10 +422,10 @@ function sampleDoc() {
 let pendingDraft = null;
 function editView(id, newType, custId) {
   let d;
-  if (id) { const src = S.getDoc(id); if (!src) { location.hash = '#/'; return; } d = structuredClone(src); }
+  if (id) { const src = S.getDoc(id); if (!src) { location.hash = '#/invoices'; return; } d = structuredClone(src); }
   else if (pendingDraft && pendingDraft.type === newType) { d = pendingDraft; pendingDraft = null; }
   else {
-    if (!DOC_TYPES[newType]) { location.hash = '#/'; return; }
+    if (!DOC_TYPES[newType]) { location.hash = '#/invoices'; return; }
     d = S.newDoc(newType);
     const c = custId && S.getCustomer(custId);
     if (c) Object.assign(d, { customerId: c.id, billTo: c.billTo, shipTo: c.shipTo || '', email: c.email || '' });
@@ -344,8 +438,18 @@ function editView(id, newType, custId) {
   setChrome({ title: titleFor(), back: true, nav: false });
   leaveGuard = async () => !dirty || await confirmSheet({ title: 'Discard changes?', body: 'Your changes to this document haven’t been saved.', ok: 'Discard', danger: true });
 
+  let moreOpen = !!(d.po || d.shipTo || num(d.discount) || num(d.shipping));
   const draw = () => {
-    const type = DOC_TYPES[d.type];
+    const type = DOC_TYPES[d.type], easy = simple();
+    const prev = $('.more-opts'); if (prev) moreOpen = prev.open;
+    const shipHTML = `<label class="check"><input type="checkbox" data-act="toggleShip" ${d.shipTo ? 'checked' : ''}> <span>Add ${(type.shipToLabel || 'ship to').toLowerCase()} address</span></label>
+      <label class="field ${d.shipTo ? '' : 'hidden'}" id="shipField"><span>${type.shipToLabel || 'Ship To'}</span><textarea data-f="shipTo" rows="3">${esc(d.shipTo)}</textarea></label>`;
+    const poHTML = `<label class="field"><span>P.O. # (optional)</span><input data-f="po" value="${esc(d.po)}"></label>`;
+    const dueHTML = `<label class="field"><span>${type.validUntil ? 'Valid until' : 'Due date'}</span><input data-f="dueDate" type="date" value="${esc(d.dueDate)}"></label>`;
+    const discHTML = `<div class="grid2">
+        <label class="field"><span>Discount %</span><input data-f="discount" inputmode="decimal" value="${d.discount || ''}" placeholder="0"></label>
+        <label class="field"><span>Shipping</span><input data-f="shipping" inputmode="decimal" value="${d.shipping || ''}" placeholder="0.00"></label>
+      </div>`;
     view.innerHTML = `
     <div class="card section stack">
       <div class="row"><button class="doc-type-btn" data-act="type">${type.label}${icon('down')}</button><div class="grow"></div>
@@ -354,10 +458,7 @@ function editView(id, newType, custId) {
         <label class="field"><span>${type.numLabel}</span><input data-f="number" value="${esc(d.number)}"></label>
         <label class="field"><span>${type.dateLabel}</span><input data-f="date" type="date" value="${esc(d.date)}"></label>
       </div>
-      <div class="grid2">
-        <label class="field"><span>${type.validUntil ? 'Valid until' : 'Due date'}</span><input data-f="dueDate" type="date" value="${esc(d.dueDate)}"></label>
-        <label class="field"><span>P.O. # (optional)</span><input data-f="po" value="${esc(d.po)}"></label>
-      </div>
+      ${easy ? dueHTML : `<div class="grid2">${dueHTML}${poHTML}</div>`}
     </div>
 
     <div class="card section stack">
@@ -369,10 +470,9 @@ function editView(id, newType, custId) {
     <div class="card section stack">
       <div class="row"><h2 class="grow" style="margin:0">${type.billToLabel || 'Bill To'}</h2>
         ${S.db().customers.length ? `<button class="btn ghost" data-act="pickCustomer">${icon('user')}Choose</button>` : ''}</div>
-      <label class="field"><textarea data-f="billTo" rows="3" placeholder="Customer name&#10;Billing address">${esc(d.billTo)}</textarea></label>
-      <label class="field"><span>Customer email (optional)</span><input data-f="email" type="email" value="${esc(d.email)}"></label>
-      <label class="check"><input type="checkbox" data-act="toggleShip" ${d.shipTo ? 'checked' : ''}> Add ${(type.shipToLabel || 'ship to').toLowerCase()} address</label>
-      <label class="field ${d.shipTo ? '' : 'hidden'}" id="shipField"><span>${type.shipToLabel || 'Ship To'}</span><textarea data-f="shipTo" rows="3">${esc(d.shipTo)}</textarea></label>
+      <label class="field"><textarea data-f="billTo" rows="3" placeholder="Student or parent name&#10;Billing address">${esc(d.billTo)}</textarea></label>
+      <label class="field"><span>Email (optional)</span><input data-f="email" type="email" value="${esc(d.email)}"></label>
+      ${easy ? '' : shipHTML}
     </div>
 
     <div class="card section">
@@ -385,12 +485,12 @@ function editView(id, newType, custId) {
     </div>
 
     ${type.noPrices ? '' : `<div class="card section">
-      <div class="grid2">
-        <label class="field"><span>Discount %</span><input data-f="discount" inputmode="decimal" value="${d.discount || ''}" placeholder="0"></label>
-        <label class="field"><span>Shipping</span><input data-f="shipping" inputmode="decimal" value="${d.shipping || ''}" placeholder="0.00"></label>
-      </div>
+      ${easy ? '' : discHTML}
       <div class="totals-box" id="totals"></div>
     </div>`}
+
+    ${easy ? `<details class="card section more-opts" ${moreOpen ? 'open' : ''}><summary>More options</summary>
+      <div class="stack" style="margin-top:12px">${poHTML}${shipHTML}${type.noPrices ? '' : discHTML}</div></details>` : ''}
 
     <div class="card section stack">
       <h2>Notes</h2>
@@ -510,7 +610,7 @@ function currencyOptions(sel) {
 
 function customerPicker(onPick) {
   const cs = [...S.db().customers].sort((a, b) => S.customerName(a).localeCompare(S.customerName(b)));
-  const sh = openSheet(`<h3>Choose customer</h3>
+  const sh = openSheet(`<h3>Choose student</h3>
     <div class="search">${icon('search')}<input class="input" id="cq" type="search" placeholder="Search" autofocus></div>
     <div class="menu" id="clist"></div>`);
   const draw = q => $('#clist', sh).innerHTML = cs.filter(c => (c.billTo + c.email).toLowerCase().includes(q)).map(c =>
@@ -586,23 +686,29 @@ function customerStats(c) {
   const st = overdue > 0 ? 'overdue' : balance > 0.004 ? 'unpaid' : 'paid';
   return { docs, billed, balance, overdue, st };
 }
+function studentSub(c, docs) {
+  const next = nextLessonOf(c.id)[0];
+  const parts = [num(c.rate) ? `${money(num(c.rate))}/h` : `${docs.length} invoice${docs.length === 1 ? '' : 's'}`];
+  if (next) parts.push(`Next ${shortDay(next.date)}, ${next.start}`);
+  return esc(parts.join(' · '));
+}
 function customersView() {
-  setChrome({ title: 'Customers', fab: () => editCustomerSheet() });
+  setChrome({ title: 'Students', fab: () => editCustomerSheet() });
   view.innerHTML = `
-    <div class="search">${icon('search')}<input class="input" id="q" type="search" placeholder="Search customers" value="${esc(custFilter.q)}"></div>
-    <div class="chips">${['all', 'unpaid', 'overdue', 'paid'].map(s => `<button class="chip ${custFilter.status === s ? 'active' : ''}" data-st="${s}">${s === 'all' ? 'All' : s === 'paid' ? 'All paid' : STATUS_LABEL[s]}</button>`).join('')}</div>
+    <div class="search">${icon('search')}<input class="input" id="q" type="search" placeholder="Search students" value="${esc(custFilter.q)}"></div>
+    <div class="chips">${['all', 'unpaid', 'overdue', 'paid'].map(s => `<button class="chip ${custFilter.status === s ? 'active' : ''}" data-st="${s}">${{ all: 'All', unpaid: 'Owing', overdue: 'Overdue', paid: 'Paid up' }[s]}</button>`).join('')}</div>
     <div id="clist"></div>`;
   const draw = () => {
     const q = custFilter.q.toLowerCase();
     const rows = S.db().customers.map(c => ({ c, ...customerStats(c) }))
       .filter(r => (r.c.billTo + ' ' + r.c.email).toLowerCase().includes(q))
       .filter(r => custFilter.status === 'all' || r.st === custFilter.status || (custFilter.status === 'unpaid' && r.st === 'overdue'))
-      .sort((a, b) => S.customerName(a.c).localeCompare(S.customerName(b.c)));
+      .sort((a, b) => (b.balance > 0.004) - (a.balance > 0.004) || S.customerName(a.c).localeCompare(S.customerName(b.c))); // owing first
     $('#clist').innerHTML = rows.length ? `<div class="card list">${rows.map(r => `
       <a class="list-item" href="#/customer/${r.c.id}"><span class="avatar">${initials(S.customerName(r.c))}</span>
-        <div class="main"><div class="title ellipsis">${esc(S.customerName(r.c))}</div><div class="sub">${r.docs.length} document${r.docs.length === 1 ? '' : 's'}</div></div>
+        <div class="main"><div class="title ellipsis">${esc(S.customerName(r.c))}</div><div class="sub">${studentSub(r.c, r.docs)}</div></div>
         <div class="amt">${r.balance > 0.004 ? money(r.balance) : ''}<br>${r.docs.length ? badge(r.st) : ''}</div></a>`).join('')}</div>`
-      : empty('user', S.db().customers.length ? 'No customers match.' : 'No customers yet.<br>They’re added automatically when you save a document.');
+      : empty('user', S.db().customers.length ? 'No students match.' : 'No students yet.<br>Tap + to add one.');
   };
   draw();
   view.oninput = e => { if (e.target.id === 'q') { custFilter.q = e.target.value; draw(); } };
@@ -614,7 +720,7 @@ function customerView(id) {
   if (!c) { location.hash = '#/customers'; return; }
   const st = customerStats(c);
   setChrome({ title: S.customerName(c), back: true, actions: `<button class="icon-btn" data-top="edit" aria-label="Edit customer">${icon('edit')}</button>`,
-    fab: () => pickDocType(t => location.hash = `#/new/${t}/${c.id}`) });
+    fab: () => simple() ? location.hash = `#/new/invoice/${c.id}` : pickDocType(t => location.hash = `#/new/${t}/${c.id}`) });
   $('#topActions').onclick = () => editCustomerSheet(c);
   const docs = st.docs.sort((a, b) => b.date.localeCompare(a.date));
   view.innerHTML = `
@@ -625,22 +731,24 @@ function customerView(id) {
       ${c.notes ? `<p class="small muted">${esc(c.notes)}</p>` : ''}
     </div>
     ${lessonCard(c)}
+    ${upcomingCard(c)}
     <div class="summary">
       <div class="card"><div class="label">Billed</div><div class="value">${money(st.billed)}</div></div>
       <div class="card"><div class="label">Balance</div><div class="value ${st.overdue ? 'bad' : ''}">${money(st.balance)}</div></div>
     </div>
     <div class="row" style="margin-bottom:12px"><button class="btn grow" data-act="statement">${icon('csv')}Statement (CSV)</button>
-      <button class="btn grow" data-act="new">${icon('plus')}New document</button></div>
+      <button class="btn grow" data-act="new">${icon('plus')}New ${simple() ? 'invoice' : 'document'}</button></div>
     ${docs.length ? `<div class="card list">${docs.map(d => { const t = totals(d); return `
       <a class="list-item" href="#/doc/${d.id}"><div class="main"><div class="title">${DOC_TYPES[d.type].label} ${esc(d.number)}</div><div class="sub">${fmtDate(d.date)}</div></div>
       <div class="amt">${money(t.total, d.currency)}<br>${badge(status(d, t))}</div></a>`; }).join('')}</div>` : empty('doc', 'No documents for this customer yet.')}`;
   view.onclick = e => {
-    const b = e.target.closest('[data-act]'); if (!b) return;
-    if (b.dataset.act === 'new') pickDocType(t => location.hash = `#/new/${t}/${c.id}`);
+    const b = e.target.closest('[data-act],[data-lesson]'); if (!b) return;
+    if (b.dataset.act === 'new') { if (simple()) location.hash = `#/new/invoice/${c.id}`; else pickDocType(t => location.hash = `#/new/${t}/${c.id}`); }
+    if (b.dataset.act === 'addLesson') lessonSheet(null, S.today(), () => customerView(c.id), c.id);
+    if (b.dataset.lesson) lessonSheet(S.getLesson(b.dataset.lesson), null, () => customerView(c.id));
     if (b.dataset.act === 'billLessons') {
-      const ds = S.db().lessons.filter(l => l.customerId === c.id && S.isBillable(l)).map(l => l.date).sort();
-      const last = ds[ds.length - 1] || '';
-      generateSheet({ from: ds[0] || S.today(), to: S.today() > last ? S.today() : last, customerId: c.id });
+      const ds = S.db().lessons.filter(l => l.customerId === c.id && S.isBillable(l) && l.date <= S.today()).map(l => l.date).sort();
+      generateSheet({ from: ds[0] || S.today(), to: S.today(), customerId: c.id });
     }
     if (b.dataset.act === 'editCust') editCustomerSheet(c);
     if (b.dataset.act === 'statement') {
@@ -653,7 +761,7 @@ function customerView(id) {
 
 function lessonCard(c) {
   const ls = S.db().lessons.filter(l => l.customerId === c.id);
-  const open = ls.filter(S.isBillable);
+  const open = ls.filter(l => S.isBillable(l) && l.date <= S.today()); // lessons that have happened
   const rate = num(c.rate);
   const owed = open.reduce((a, l) => a + (l.status === 'cancelled' ? 0 : S.lessonHours(l) * rate), 0);
   return `<div class="card list">
@@ -661,15 +769,26 @@ function lessonCard(c) {
       <div class="main"><div class="title">Hourly rate</div><div class="sub">${esc(c.subject || 'Lesson')}</div></div>
       <div class="amt">${rate ? money(rate) + '/h' : '<span class="muted">Not set</span>'}</div></button>
     <button class="list-item plain" data-act="billLessons" ${open.length ? '' : 'disabled'}>
-      <div class="main"><div class="title">Lessons not invoiced</div><div class="sub">${ls.length} lesson${ls.length === 1 ? '' : 's'} in total</div></div>
+      <div class="main"><div class="title">Lessons not invoiced</div><div class="sub">Up to today</div></div>
       <div class="amt">${open.length ? `${open.length} · ${money(Math.round(owed * 100) / 100)}` : '<span class="muted">None</span>'}</div></button>
   </div>`;
 }
 
+function upcomingCard(c) {
+  const next = nextLessonOf(c.id).slice(0, 4);
+  return `<div class="row" style="margin:4px 0 8px"><div class="section-title grow" style="margin:0">Upcoming lessons</div>
+      <button class="btn ghost" data-act="addLesson">${icon('plus')}Add</button></div>
+    ${next.length ? `<div class="card list">${next.map(l => `<button class="list-item plain" data-lesson="${l.id}">
+      <span class="lesson-bar" style="background:${studentColor(c.id)}"></span>
+      <div class="main"><div class="title">${esc(shortDay(l.date))}</div><div class="sub">${esc(l.start)}–${esc(l.end)} · ${fmtHours(S.lessonHours(l))}${l.seriesId ? ' · weekly' : ''}</div></div>
+      ${lessonBadge(l)}</button>`).join('')}</div>`
+      : `<div class="card section muted small" style="text-align:center">No upcoming lessons.</div>`}`;
+}
+
 function editCustomerSheet(c) {
   const isNew = !c; c = c ? { ...c } : { id: S.uid(), billTo: '', shipTo: '', email: '', phone: '', notes: '', rate: '', subject: '' };
-  const sh = openSheet(`<h3>${isNew ? 'New customer' : 'Edit customer'}</h3><div class="stack">
-    <label class="field"><span>Name &amp; billing address</span><textarea id="c_bill" rows="3" placeholder="Customer name&#10;Address" autofocus>${esc(c.billTo)}</textarea></label>
+  const sh = openSheet(`<h3>${isNew ? 'New student' : 'Edit student'}</h3><div class="stack">
+    <label class="field"><span>Name &amp; billing address</span><textarea id="c_bill" rows="3" placeholder="Student or parent name&#10;Address" autofocus>${esc(c.billTo)}</textarea></label>
     <label class="field"><span>Shipping address (optional)</span><textarea id="c_ship" rows="2">${esc(c.shipTo)}</textarea></label>
     <div class="grid2"><label class="field"><span>Email</span><input id="c_email" type="email" value="${esc(c.email)}"></label>
       <label class="field"><span>Phone</span><input id="c_phone" type="tel" value="${esc(c.phone)}"></label></div>
@@ -681,13 +800,13 @@ function editCustomerSheet(c) {
     const b = e.target.closest('[data-x]'); if (!b) return;
     if (b.dataset.x === 'del') {
       closeSheet();
-      if (await confirmSheet({ title: 'Delete customer?', body: 'Their documents are kept, but no longer linked to this customer. Their lessons are deleted.', ok: 'Delete', danger: true })) { S.deleteCustomer(c.id); location.hash = '#/customers'; }
+      if (await confirmSheet({ title: 'Delete student?', body: 'Their invoices are kept, but no longer linked to this student. Their lessons are deleted.', ok: 'Delete', danger: true })) { S.deleteCustomer(c.id); location.hash = '#/customers'; }
       return;
     }
     c.billTo = $('#c_bill').value.trim(); c.shipTo = $('#c_ship').value.trim(); c.email = $('#c_email').value.trim(); c.phone = $('#c_phone').value.trim(); c.notes = $('#c_notes').value.trim();
     c.rate = num($('#c_rate').value) || ''; c.subject = $('#c_subject').value.trim();
     if (!c.billTo) { toast('Enter a name'); return; }
-    S.saveCustomer(c); closeSheet(); toast('Customer saved');
+    S.saveCustomer(c); closeSheet(); toast('Student saved');
     if (isNew) location.hash = `#/customer/${c.id}`; else customerView(c.id);
   };
 }
@@ -763,7 +882,7 @@ function periodRange(p) {
   }[p];
 }
 function reportsView() {
-  setChrome({ title: 'Reports' });
+  setChrome({ title: 'Reports', back: true });
   const P = { this_month: 'This month', last_month: 'Last month', this_quarter: 'This quarter', last_quarter: 'Last quarter', this_year: 'This year', last_year: 'Last year', all: 'All time', custom: 'Custom' };
   view.innerHTML = `
     <div class="chips">${Object.entries(P).map(([k, v]) => `<button class="chip ${rep.period === k ? 'active' : ''}" data-p="${k}">${v}</button>`).join('')}</div>
@@ -826,7 +945,7 @@ function reportsView() {
   };
 }
 
-// ------------------------------------------------------------------ lessons calendar
+// ------------------------------------------------------------------ today (lessons calendar)
 const STUDENT_COLORS = ['#007aff', '#34c759', '#ff9500', '#af52de', '#ff2d55', '#30b0c7', '#ffcc00', '#5856d6', '#a2845e', '#ff3b30'];
 // Each student gets the next colour in the order they were added, so the first ten never clash.
 const studentColor = id => { const i = S.db().customers.findIndex(c => c.id === id); return i < 0 ? '#8e8e93' : STUDENT_COLORS[i % STUDENT_COLORS.length]; };
@@ -836,100 +955,154 @@ const monthOf = date => date.slice(0, 7);
 const monthStart = ym => `${ym}-01`;
 const monthEnd = ym => { const [y, m] = ym.split('-').map(Number); return S.iso(new Date(y, m, 0)); };
 const shiftMonth = (ym, n) => { const [y, m] = ym.split('-').map(Number); return S.iso(new Date(y, m - 1 + n, 1)).slice(0, 7); };
+const weekStart = d => { const dt = new Date(d + 'T00:00:00'); return S.addDays(d, -((dt.getDay() + 6) % 7)); }; // weeks start on Monday
+const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5);
+const shortDay = d => new Date(d + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const lessonAmount = l => { const c = S.getCustomer(l.customerId); return l.status === 'cancelled' ? 0 : r2(S.lessonHours(l) * num(c?.rate)); };
 const studentName = id => { const c = S.getCustomer(id); return c ? S.customerName(c) : 'Unknown student'; };
+const nextLessonOf = cid => S.db().lessons.filter(l => l.customerId === cid && l.status !== 'cancelled' && l.date >= S.today())
+  .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 const lessonBadge = l => {
-  const inv = S.lessonInvoice(l);
-  if (inv) return `<span class="badge paid">Invoiced</span>`;
+  if (S.lessonInvoice(l)) return `<span class="badge paid">Invoiced</span>`;
   if (l.status === 'cancelled') return `<span class="badge unpaid">Cancelled</span>`;
   if (l.status === 'charged') return `<span class="badge partial">Late cancel</span>`;
   return `<span class="badge draft">To bill</span>`;
 };
+// A lesson row; unbilled lessons get swipe actions (cancel / late cancel, or restore).
+const lessonRow = l => {
+  const acts = S.lessonInvoice(l) ? '' : l.status === 'lesson'
+    ? `<button data-swipe="charged" class="warn">Late<br>cancel</button><button data-swipe="cancelled" class="bad">Cancel</button>`
+    : `<button data-swipe="lesson" class="ok">Restore</button>`;
+  const row = `<div class="list-item ${acts ? 'swipe-row' : ''}" data-lesson="${l.id}">
+      <span class="lesson-bar" style="background:${studentColor(l.customerId)}"></span>
+      <div class="main"><div class="title ellipsis">${esc(studentName(l.customerId))}</div>
+        <div class="sub">${esc(l.start)}–${esc(l.end)} · ${fmtHours(S.lessonHours(l))}${l.seriesId ? ` · ${icon('repeat', 'style="width:13px;height:13px;vertical-align:-2px"')}` : ''}${l.note ? ` · ${esc(l.note)}` : ''}</div></div>
+      <div class="amt">${l.status === 'cancelled' ? '' : money(lessonAmount(l))}<br>${lessonBadge(l)}</div>
+    </div>`;
+  return acts ? `<div class="swipe" data-id="${l.id}"><div class="swipe-acts">${acts}</div>${row}</div>` : row;
+};
 
-const cal = { month: monthOf(S.today()), sel: S.today() };
+const cal = { sel: S.today(), mode: 'week' };
 function lessonsView() {
-  setChrome({ title: 'Lessons', fab: () => lessonSheet(null, cal.sel) });
   const draw = () => {
-    const ym = cal.month, [y, m] = ym.split('-').map(Number);
-    const first = new Date(y, m - 1, 1), offset = (first.getDay() + 6) % 7; // weeks start on Monday
-    const start = S.addDays(monthStart(ym), -offset);
-    const days = Array.from({ length: 42 }, (_, i) => S.addDays(start, i));
-    while (days.length > 35 && days.slice(-7).every(d => monthOf(d) !== ym)) days.splice(-7); // drop a trailing week outside the month
-    const t = S.today();
+    const t = S.today(), sel = cal.sel, ym = monthOf(sel);
+    let days;
+    if (cal.mode === 'week') days = Array.from({ length: 7 }, (_, i) => S.addDays(weekStart(sel), i));
+    else {
+      const start = weekStart(monthStart(ym));
+      days = Array.from({ length: 42 }, (_, i) => S.addDays(start, i));
+      while (days.length > 35 && days.slice(-7).every(d => monthOf(d) !== ym)) days.splice(-7);
+    }
+    const shown = new Set(days), byDay = {};
+    for (const l of S.db().lessons) if (shown.has(l.date)) (byDay[l.date] ||= []).push(l);
     const monthLessons = S.db().lessons.filter(l => monthOf(l.date) === ym);
-    const byDay = {}; for (const l of monthLessons.concat(S.db().lessons.filter(l => monthOf(l.date) !== ym && days.includes(l.date)))) (byDay[l.date] ||= []).push(l);
     const billed = monthLessons.filter(l => l.status !== 'cancelled');
     const unbilled = monthLessons.filter(S.isBillable);
-    const dayLessons = S.lessonsOn(cal.sel);
-    const title = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const dayLessons = S.lessonsOn(sel);
+
+    // Month-end nudge: lessons from earlier months that haven't been invoiced.
+    const past = S.db().lessons.filter(l => l.date < monthStart(monthOf(t)) && S.isBillable(l));
+    let banner = '';
+    if (past.length) {
+      const months = [...new Set(past.map(l => monthOf(l.date)))].sort();
+      const mname = m => new Date(m + '-01T00:00:00').toLocaleDateString(undefined, { month: 'long' });
+      const label = months.length === 1 ? mname(months[0]) : `${mname(months[0])} – ${mname(months[months.length - 1])}`;
+      banner = `<div class="status-banner partial nudge"><div class="grow"><b>${esc(label)}</b><br>${past.length} lesson${past.length > 1 ? 's' : ''} not invoiced · ${money(past.reduce((a, l) => a + lessonAmount(l), 0))}</div>
+        <button class="btn primary" data-act="genPast">Generate</button></div>`;
+    }
+
+    const title = new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     const dow = Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(undefined, { weekday: 'narrow' }));
-    view.innerHTML = `
-      <div class="card cal" id="cal">
+    const dayTitle = sel === t ? 'Today' : sel === S.addDays(t, 1) ? 'Tomorrow' : sel === S.addDays(t, -1) ? 'Yesterday'
+      : new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    const swipeable = dayLessons.some(l => !S.lessonInvoice(l));
+    view.innerHTML = `${banner}
+      <div class="card cal ${cal.mode}" id="cal">
         <div class="cal-head">
           <div class="cal-title">${esc(title)}</div>
-          ${ym !== monthOf(t) ? `<button class="btn ghost" data-cal="today">Today</button>` : ''}
-          <button class="icon-btn" data-cal="-1" aria-label="Previous month">${icon('left')}</button>
-          <button class="icon-btn" data-cal="1" aria-label="Next month">${icon('right')}</button>
+          ${sel !== t ? `<button class="btn ghost" data-cal="today">Today</button>` : ''}
+          <button class="icon-btn" data-cal="-1" aria-label="Previous ${cal.mode}">${icon('left')}</button>
+          <button class="icon-btn" data-cal="1" aria-label="Next ${cal.mode}">${icon('right')}</button>
         </div>
         <div class="cal-grid">
           ${dow.map(d => `<div class="cal-dow">${d}</div>`).join('')}
           ${days.map(d => {
             const ls = byDay[d] || [];
-            return `<button class="cal-day ${monthOf(d) !== ym ? 'out' : ''} ${d === t ? 'today' : ''} ${d === cal.sel ? 'sel' : ''}" data-day="${d}" aria-label="${d}${ls.length ? `, ${ls.length} lesson${ls.length > 1 ? 's' : ''}` : ''}">
+            return `<button class="cal-day ${cal.mode === 'month' && monthOf(d) !== ym ? 'out' : ''} ${d === t ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-day="${d}" aria-label="${d}${ls.length ? `, ${ls.length} lesson${ls.length > 1 ? 's' : ''}` : ''}">
               <span>${+d.slice(8)}</span><i class="cal-dots">${ls.slice(0, 4).map(l => `<b style="background:${studentColor(l.customerId)};${l.status === 'cancelled' ? 'opacity:.35' : ''}"></b>`).join('')}</i></button>`;
           }).join('')}
         </div>
+        <button class="cal-toggle" data-cal="mode">${cal.mode === 'week' ? 'Show month' : 'Show week'}${icon(cal.mode === 'week' ? 'down' : 'up')}</button>
       </div>
 
-      <div class="section-title">${esc(fmtDate(cal.sel))}</div>
-      ${dayLessons.length ? `<div class="card list">${dayLessons.map(l => `
-        <div class="list-item" data-lesson="${l.id}">
-          <span class="lesson-bar" style="background:${studentColor(l.customerId)}"></span>
-          <div class="main"><div class="title ellipsis">${esc(studentName(l.customerId))}</div>
-            <div class="sub">${esc(l.start)}–${esc(l.end)} · ${fmtHours(S.lessonHours(l))}${l.seriesId ? ` · ${icon('repeat', 'style="width:13px;height:13px;vertical-align:-2px"')}` : ''}${l.note ? ` · ${esc(l.note)}` : ''}</div></div>
-          <div class="amt">${l.status === 'cancelled' ? '' : money(lessonAmount(l))}<br>${lessonBadge(l)}</div>
-        </div>`).join('')}</div>`
-        : `<div class="card list"><button class="list-item add-lesson" data-act="add">${icon('plus')}<span>Add a lesson on this day</span></button></div>`}
+      <div class="section-title">${esc(dayTitle)}</div>
+      ${dayLessons.length ? `<div class="card list" id="dayList">${dayLessons.map(lessonRow).join('')}</div>`
+        : `<div class="card list"><button class="list-item add-lesson" data-act="add">${icon('plus')}<span>Add a lesson</span></button></div>`}
+      ${swipeable ? `<p class="small muted hint">Swipe a lesson left to cancel it.</p>` : ''}
 
+      <div class="section-title">${esc(new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { month: 'long' }))}</div>
       <div class="summary">
-        <div class="card"><div class="label">Lessons this month</div><div class="value">${billed.length}</div></div>
+        <div class="card"><div class="label">Lessons</div><div class="value">${billed.length}</div></div>
         <div class="card"><div class="label">Hours</div><div class="value">${r2(billed.reduce((a, l) => a + S.lessonHours(l), 0))}</div></div>
-        <div class="card"><div class="label">Earned</div><div class="value">${money(billed.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
-        <div class="card"><div class="label">Not invoiced yet</div><div class="value ${unbilled.length ? 'bad' : ''}">${money(unbilled.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
+        <div class="card"><div class="label">Total</div><div class="value">${money(billed.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
+        <div class="card"><div class="label">Not invoiced</div><div class="value ${unbilled.length ? 'bad' : ''}">${money(unbilled.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
       </div>
-      <button class="btn primary block" data-act="generate">${icon('doc')}Generate invoices</button>`;
+      <button class="btn block" data-act="generate">${icon('doc')}Generate invoices for ${esc(new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { month: 'long' }))}</button>`;
+
+    const dl = $('#dayList');
+    if (dl) enableSwipe(dl, (id, act) => {
+      const l = S.getLesson(id); if (!l) return;
+      l.status = act; S.saveLesson(l);
+      toast(act === 'cancelled' ? 'Cancelled, not charged' : act === 'charged' ? 'Late cancellation, will be charged' : 'Lesson restored');
+      draw();
+    });
   };
+  setChrome({ title: 'Today', fab: () => lessonSheet(null, cal.sel, draw) });
   draw();
 
+  const move = n => {
+    if (cal.mode === 'week') cal.sel = S.addDays(cal.sel, 7 * n);
+    else { const m = shiftMonth(monthOf(cal.sel), n); cal.sel = m === monthOf(S.today()) ? S.today() : monthStart(m); }
+    draw();
+  };
   view.onclick = e => {
     const c = e.target.closest('[data-cal]');
-    if (c) { const v = c.dataset.cal; cal.month = v === 'today' ? monthOf(S.today()) : shiftMonth(cal.month, +v); if (v === 'today') cal.sel = S.today(); draw(); return; }
+    if (c) {
+      const v = c.dataset.cal;
+      if (v === 'today') { cal.sel = S.today(); draw(); }
+      else if (v === 'mode') { cal.mode = cal.mode === 'week' ? 'month' : 'week'; draw(); }
+      else move(+v);
+      return;
+    }
     const d = e.target.closest('[data-day]');
-    if (d) { cal.sel = d.dataset.day; if (monthOf(cal.sel) !== cal.month) cal.month = monthOf(cal.sel); draw(); return; }
+    if (d) { cal.sel = d.dataset.day; draw(); return; }
     const l = e.target.closest('[data-lesson]');
     if (l) { lessonSheet(S.getLesson(l.dataset.lesson), null, draw); return; }
     const a = e.target.closest('[data-act]')?.dataset.act;
     if (a === 'add') lessonSheet(null, cal.sel, draw);
-    if (a === 'generate') generateSheet({ from: monthStart(cal.month), to: monthEnd(cal.month) });
+    if (a === 'generate') generateSheet({ from: monthStart(monthOf(cal.sel)), to: monthEnd(monthOf(cal.sel)) });
+    if (a === 'genPast') {
+      const past = S.db().lessons.filter(x => x.date < monthStart(monthOf(S.today())) && S.isBillable(x)).map(x => x.date).sort();
+      generateSheet({ from: past[0], to: monthEnd(shiftMonth(monthOf(S.today()), -1)) });
+    }
   };
-  // Swipe left/right on the calendar to change month.
+  // Swipe left/right on the calendar to change week or month.
   let x0 = null;
   view.ontouchstart = e => { x0 = e.target.closest('#cal') ? e.touches[0].clientX : null; };
   view.ontouchend = e => {
     if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
-    if (Math.abs(dx) > 60) { cal.month = shiftMonth(cal.month, dx < 0 ? 1 : -1); draw(); }
+    if (Math.abs(dx) > 60) move(dx < 0 ? 1 : -1);
   };
-  $('#fab').onclick = () => lessonSheet(null, cal.sel, draw);
 }
 
-function lessonSheet(l, date, onDone = () => {}) {
+function lessonSheet(l, date, onDone = () => {}, presetCustomer = null) {
   const customers = [...S.db().customers].sort((a, b) => S.customerName(a).localeCompare(S.customerName(b)));
   if (!customers.length) {
-    toast('Add a student in Customers first'); editCustomerSheet(); return;
+    toast('Add a student first'); editCustomerSheet(); return;
   }
   const isNew = !l;
   if (isNew) {
-    const cid = customers[0].id, last = S.lastLessonOf(cid);
+    const cid = presetCustomer || customers[0].id, last = S.lastLessonOf(cid);
     l = { id: S.uid(), customerId: cid, date, start: last?.start || '15:00', end: last?.end || '16:00', status: 'lesson', note: '', seriesId: null, invoiceId: null };
   } else l = { ...l };
   const inv = S.lessonInvoice(l);
@@ -942,6 +1115,7 @@ function lessonSheet(l, date, onDone = () => {}) {
     <p class="small muted" id="l_sum" style="margin:0 0 0 4px"></p>
     <label class="field"><span>Status</span><select id="l_status">${Object.entries(S.LESSON_STATUS).map(([k, v]) => `<option value="${k}" ${l.status === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
     <label class="field"><span>Note (optional)</span><input id="l_note" value="${esc(l.note)}" placeholder="e.g. Algebra revision"></label>
+    ${!isNew && l.seriesId ? `<label class="check"><input type="checkbox" id="l_all"> <span>Apply to all following lessons<br><span class="small muted">Moves the student, time and weekday of later lessons in this weekly series</span></span></label>` : ''}
     ${isNew ? `<label class="check"><input type="checkbox" id="l_rep"> <span>Repeat every week</span></label>
       <label class="field hidden" id="l_untilF"><span>Until</span><input id="l_until" type="date" value="${S.addDays(date, 7 * 12)}"></label>` : ''}
   </div>
@@ -951,7 +1125,7 @@ function lessonSheet(l, date, onDone = () => {}) {
     const tmp = { start: $('#l_start', sh).value, end: $('#l_end', sh).value };
     const h = S.lessonHours(tmp), c = S.getCustomer($('#l_cust', sh).value);
     $('#l_sum', sh).textContent = h <= 0 ? 'End time must be after the start time.'
-      : num(c?.rate) ? `${fmtHours(h)} × ${money(num(c.rate))}/h = ${money(r2(h * num(c.rate)))}` : `${fmtHours(h)} · no hourly rate set for this student yet (edit them in Customers)`;
+      : num(c?.rate) ? `${fmtHours(h)} × ${money(num(c.rate))}/h = ${money(r2(h * num(c.rate)))}` : `${fmtHours(h)} · no hourly rate set for this student yet (edit them in Students)`;
   };
   sum();
   sh.oninput = sh.onchange = e => {
@@ -987,6 +1161,7 @@ function lessonSheet(l, date, onDone = () => {}) {
       if (await confirmSheet({ title: 'Delete lesson?', ok: 'Delete', danger: true })) { S.deleteLesson(l.id); toast('Deleted'); onDone(); }
       return;
     }
+    const orig = isNew ? null : { ...S.getLesson(l.id) };
     Object.assign(l, {
       customerId: $('#l_cust', sh).value, date: $('#l_date', sh).value, start: $('#l_start', sh).value, end: $('#l_end', sh).value,
       status: $('#l_status', sh).value, note: $('#l_note', sh).value.trim(),
@@ -997,8 +1172,13 @@ function lessonSheet(l, date, onDone = () => {}) {
       const until = $('#l_until', sh).value;
       if (!until || until < l.date) { toast('Pick an end date for the repeats'); return; }
       const n = S.addWeekly(l, until); closeSheet(); toast(`${n} weekly lessons added`);
+    } else if (orig && $('#l_all', sh)?.checked) { // change the weekly slot from here on
+      const shift = daysBetween(orig.date, l.date);
+      const later = S.db().lessons.filter(x => x.seriesId === l.seriesId && x.id !== l.id && x.date > orig.date && !S.lessonInvoice(x));
+      for (const x of later) Object.assign(x, { customerId: l.customerId, start: l.start, end: l.end, date: S.addDays(x.date, shift) });
+      S.saveLesson(l); closeSheet(); toast(`This and ${later.length} following lesson${later.length === 1 ? '' : 's'} updated`);
     } else { S.saveLesson(l); closeSheet(); toast('Lesson saved'); }
-    cal.sel = l.date; cal.month = monthOf(l.date);
+    cal.sel = l.date;
     onDone();
   };
 }
@@ -1056,7 +1236,7 @@ function generateSheet({ from, to, customerId = null }) {
     }
     for (const g of picked) S.saveDoc(invoiceFromLessons(g.c, g.lessons));
     toast(`${picked.length} invoices created`);
-    location.hash = '#/';
+    location.hash = '#/invoices';
   };
 }
 
@@ -1066,7 +1246,9 @@ function settingsView() {
   setChrome({ title: 'Settings' });
   view.innerHTML = `
     <div class="card list"><a class="list-item" href="#/items"><span class="avatar" style="background:var(--primary)">${icon('box', 'style="width:22px;height:22px"')}</span>
-      <div class="main"><div class="title">Saved items &amp; taxes</div></div></a></div>
+      <div class="main"><div class="title">Saved items &amp; taxes</div></div></a>
+      <a class="list-item" href="#/reports"><span class="avatar" style="background:var(--switch-on)">${icon('chart', 'style="width:22px;height:22px"')}</span>
+      <div class="main"><div class="title">Reports</div></div></a></div>
     <div class="card section stack">
       <h2>Your business</h2>
       <label class="field"><span>Business or your name</span><input data-b="name" value="${esc(b.name)}"></label>
@@ -1089,6 +1271,7 @@ function settingsView() {
 
     <div class="card section stack">
       <h2>Document defaults</h2>
+      <label class="check"><input type="checkbox" data-s="simple" ${s.simple !== false ? 'checked' : ''}> <span>Simple mode<br><span class="small muted">+ starts an invoice straight away, and P.O., ship-to, discount and shipping move under “More options”.</span></span></label>
       <div class="grid2">
         <label class="field"><span>Currency</span><select data-s="currency">${currencyOptions(s.currency)}</select></label>
         <label class="field"><span>Payment due in (days)</span><input data-s="dueDays" inputmode="numeric" value="${s.dueDays}"></label>
@@ -1144,7 +1327,7 @@ function settingsView() {
         if (!(await confirmSheet({ title: 'Restore backup?', body: 'This replaces all data in this browser with the backup.', ok: 'Restore', danger: true }))) return;
         S.importJSON(await f.text()); clearFormatCache(); applyTheme(); toast('Backup restored'); settingsView();
       }
-      if (a === 'reset' && await confirmSheet({ title: 'Erase all data?', body: 'All documents, customers, items and settings in this browser will be deleted. This can’t be undone.', ok: 'Erase everything', danger: true })) {
+      if (a === 'reset' && await confirmSheet({ title: 'Erase all data?', body: 'All invoices, students, lessons, items and settings in this browser will be deleted. This can’t be undone.', ok: 'Erase everything', danger: true })) {
         S.resetAll(); clearFormatCache(); applyTheme(); toast('All data erased'); settingsView();
       }
     } catch (err) { toast(err.message || 'Something went wrong'); }

@@ -39,7 +39,7 @@ const defaults = () => ({
     currency: 'ZAR', locale: 'en-ZA', paper: 'a4',
     template: 'classic', color: COLORS[0],
     dueDays: 14, terms: '', footer: 'Thank you for your business!',
-    paidStamp: true, showSignature: false, theme: 'auto',
+    paidStamp: true, showSignature: false, theme: 'auto', simple: true,
     counters: {},
   },
   docs: [], customers: [], items: [], taxes: [], lessons: [],

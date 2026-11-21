@@ -144,8 +144,8 @@ body.large:not(.scrolled) .topbar h1 { opacity: 0; }
 /* ---------- tab bar: floating glass capsule ---------- */
 .bottomnav {
   position: fixed; z-index: 20; left: 16px; right: 16px; bottom: calc(10px + var(--safe-b));
-  max-width: 460px; margin: 0 auto; height: var(--nav-h); padding: 4px; border-radius: 999px;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  margin: 0 auto; height: var(--nav-h); padding: 4px; border-radius: 999px;
+  display: grid; grid-template-columns: repeat(4, 1fr); max-width: 380px;
 }
 .bottomnav a {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
@@ -357,6 +357,47 @@ button.list-item:disabled:active { background: none; }
 .add-lesson { color: var(--primary) !important; font-size: 17px !important; min-height: 52px; }
 .add-lesson svg { width: 22px; height: 22px; }
 .summary + .btn.block { margin-bottom: 8px; }
+
+/* ---------- today: week strip / month toggle ---------- */
+.cal.week { padding-bottom: 4px; }
+.cal-toggle {
+  display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%;
+  border: 0; background: none; color: var(--primary); font-size: 14px; font-weight: 500; padding: 6px 0 2px; cursor: pointer;
+}
+.cal-toggle svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.nudge { align-items: center; }
+.nudge .btn { min-height: 38px; padding: 0 16px; font-size: 15px; }
+.hint { margin: -12px 4px 16px; }
+
+/* ---------- swipe actions ---------- */
+.swipe { position: relative; overflow: hidden; }
+.swipe-acts { position: absolute; inset: 0 0 0 auto; display: flex; }
+.swipe-acts button {
+  width: 78px; border: 0; color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; cursor: pointer;
+}
+.swipe-acts .ok { background: var(--switch-on); }
+.swipe-acts .bad { background: var(--danger); }
+.swipe-acts .warn { background: #ff9500; }
+.swipe-acts .grey { background: #8e8e93; }
+.swipe-row { position: relative; z-index: 1; background: var(--surface); touch-action: pan-y; transition: transform .3s cubic-bezier(.32, .72, 0, 1); -webkit-user-drag: none; user-select: none; }
+.list > .swipe .list-item::after { display: block; }
+.list > .swipe:last-child .list-item::after { display: none; }
+.list > .swipe .list-item:has(.lesson-bar)::after { left: 32px; }
+
+/* ---------- editor: more options ---------- */
+.more-opts > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  font-size: 17px; color: var(--primary); min-height: 28px;
+}
+.more-opts > summary::-webkit-details-marker { display: none; }
+.more-opts > summary::after {
+  content: ''; width: 8px; height: 8px; border: solid var(--tertiary); border-width: 0 2px 2px 0;
+  transform: rotate(45deg); margin: -4px 6px 0 0; transition: transform .2s;
+}
+.more-opts[open] > summary::after { transform: rotate(-135deg); margin-top: 4px; }
+
+/* ---------- invoice: payment reminder ---------- */
+.btn.remind { background: var(--switch-on); color: #fff; margin-bottom: 14px; }
 
 /* ---------- preview ---------- */
 .preview-wrap { overflow: hidden; border-radius: 8px; box-shadow: 0 2px 12px rgba(0, 0, 0, .1); background: #fff; margin: 0 auto; }
