@@ -1,6 +1,7 @@
 // Small UI helpers shared by views.
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+export const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',
@@ -40,24 +41,67 @@ export function toast(msg, ms = 2400) {
 }
 
 // Bottom sheet. Returns the sheet element; onClose fires when dismissed.
-let closeCb = null;
+// It slides away when closed, and can be dragged down by its top edge to dismiss.
+let closeCb = null, closing = false, closeTimer = null;
 export function openSheet(html, onClose) {
   const sh = $('#sheet'), bd = $('#sheetBackdrop');
+  if (closing) { clearTimeout(closeTimer); closing = false; }
+  sh.classList.remove('closing'); bd.classList.remove('closing'); sh.style.transform = ''; bd.style.opacity = '';
   sh.innerHTML = `<div class="grabber"></div>${html}`;
+  const wasOpen = !sh.hidden;
   sh.hidden = false; bd.hidden = false;
+  if (!wasOpen) { sh.style.animation = 'none'; void sh.offsetHeight; sh.style.animation = ''; }
+  document.body.classList.add('sheet-open');
   closeCb = onClose || null;
   bd.onclick = closeSheet;
+  initSheetDrag(sh, bd);
   const f = sh.querySelector('[autofocus]');
   if (f) setTimeout(() => f.focus(), 60);
   return sh;
 }
 export function closeSheet() {
-  const sh = $('#sheet');
-  if (sh.hidden) return;
-  sh.hidden = true; $('#sheetBackdrop').hidden = true; sh.innerHTML = '';
+  const sh = $('#sheet'), bd = $('#sheetBackdrop');
+  if (sh.hidden || closing) return;
+  closing = true;
+  document.body.classList.remove('sheet-open');
+  const done = () => {
+    closing = false; sh.hidden = true; bd.hidden = true; sh.innerHTML = '';
+    sh.classList.remove('closing'); bd.classList.remove('closing'); sh.style.transform = ''; bd.style.opacity = '';
+  };
+  if (reduced()) done(); else { sh.classList.add('closing'); bd.classList.add('closing'); closeTimer = setTimeout(done, 280); }
   const cb = closeCb; closeCb = null; cb && cb();
 }
-export const sheetOpen = () => !$('#sheet').hidden;
+export const sheetOpen = () => !$('#sheet').hidden && !closing;
+
+let dragReady = false;
+function initSheetDrag(sh, bd) {
+  if (dragReady) return; dragReady = true;
+  let y0 = null, dy = 0, t0 = 0, id = null;
+  sh.addEventListener('pointerdown', e => {
+    const top = sh.getBoundingClientRect().top;
+    // Drag from the handle area, or from anywhere when the sheet is scrolled to the top and the target isn't a control.
+    const onHandle = e.clientY - top < 48;
+    const free = sh.scrollTop <= 0 && !e.target.closest('input, textarea, select, canvas, button, label, a, .templates, .swatches, .preview-wrap');
+    if (!onHandle && !free) return;
+    y0 = e.clientY; dy = 0; t0 = performance.now(); id = e.pointerId;
+  });
+  sh.addEventListener('pointermove', e => {
+    if (y0 == null || e.pointerId !== id) return;
+    dy = Math.max(0, e.clientY - y0);
+    if (dy > 6) { try { sh.setPointerCapture(id); } catch {} sh.style.transition = 'none'; }
+    sh.style.transform = dy ? `translateY(${dy}px)` : '';
+    bd.style.opacity = String(Math.max(0, 1 - dy / 400));
+  });
+  const end = () => {
+    if (y0 == null) return;
+    const v = dy / Math.max(1, performance.now() - t0);
+    y0 = null; sh.style.transition = '';
+    if (dy > 120 || (dy > 30 && v > .6)) closeSheet();
+    else { sh.style.transform = ''; bd.style.opacity = ''; }
+  };
+  sh.addEventListener('pointerup', end);
+  sh.addEventListener('pointercancel', end);
+}
 
 export function confirmSheet({ title, body = '', ok = 'OK', danger = false }) {
   return new Promise(res => {

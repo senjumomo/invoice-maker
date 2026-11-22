@@ -8,9 +8,9 @@
   --muted: rgba(60, 60, 67, .6);
   --tertiary: rgba(60, 60, 67, .3);
   --line: rgba(60, 60, 67, .29);
-  --primary: #007aff;
+  --primary: var(--accent, #007aff);
   --primary-ink: #ffffff;
-  --primary-soft: rgba(0, 122, 255, .12);
+  --primary-soft: color-mix(in srgb, var(--primary) 12%, transparent);
   --danger: #ff3b30;
   --ok: #248a3d;
   --ok-soft: rgba(52, 199, 89, .16);
@@ -41,7 +41,7 @@
   :root:not([data-theme="light"]) {
     --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --fill: rgba(118, 118, 128, .24);
     --text: #ffffff; --muted: rgba(235, 235, 245, .6); --tertiary: rgba(235, 235, 245, .3); --line: rgba(84, 84, 88, .65);
-    --primary: #0a84ff; --primary-ink: #ffffff; --primary-soft: rgba(10, 132, 255, .2);
+    --primary: var(--accent-dark, #0a84ff); --primary-ink: #ffffff; --primary-soft: color-mix(in srgb, var(--primary) 22%, transparent);
     --danger: #ff453a; --ok: #30d158; --ok-soft: rgba(48, 209, 88, .18); --warn: #ff9f0a; --warn-soft: rgba(255, 159, 10, .18);
     --bad-soft: rgba(255, 69, 58, .2); --switch-on: #30d158; --switch-off: rgba(120, 120, 128, .32);
     --seg-active: #636366; --bar: rgba(22, 22, 23, .8);
@@ -54,7 +54,7 @@
 :root[data-theme="dark"] {
   --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; --fill: rgba(118, 118, 128, .24);
   --text: #ffffff; --muted: rgba(235, 235, 245, .6); --tertiary: rgba(235, 235, 245, .3); --line: rgba(84, 84, 88, .65);
-  --primary: #0a84ff; --primary-ink: #ffffff; --primary-soft: rgba(10, 132, 255, .2);
+  --primary: var(--accent-dark, #0a84ff); --primary-ink: #ffffff; --primary-soft: color-mix(in srgb, var(--primary) 22%, transparent);
   --danger: #ff453a; --ok: #30d158; --ok-soft: rgba(48, 209, 88, .18); --warn: #ff9f0a; --warn-soft: rgba(255, 159, 10, .18);
   --bad-soft: rgba(255, 69, 58, .2); --switch-on: #30d158; --switch-off: rgba(120, 120, 128, .32);
   --seg-active: #636366; --bar: rgba(22, 22, 23, .8);
@@ -97,7 +97,7 @@ a { color: var(--primary); }
 }
 .topbar::before {
   content: ''; position: absolute; inset: 0 0 -18px 0; z-index: -1; pointer-events: none;
-  background: linear-gradient(to bottom, var(--bg) 0%, color-mix(in srgb, var(--bg) 70%, transparent) 55%, transparent);
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 72%, transparent) 0%, color-mix(in srgb, var(--bg) 40%, transparent) 55%, transparent);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent);
   transition: opacity .25s;
@@ -154,7 +154,7 @@ body.large:not(.scrolled) .topbar h1 { opacity: 0; }
 }
 .bottomnav a:active { transform: scale(.94); }
 .bottomnav a svg { width: 25px; height: 25px; stroke-width: 1.8; }
-.bottomnav a.active { color: var(--primary); background: var(--glass-active); }
+.bottomnav a.active { color: var(--primary); }
 .bottomnav a.active svg { fill: currentColor; fill-opacity: .2; stroke-width: 2.1; }
 body.no-nav .bottomnav { display: none; }
 
@@ -307,7 +307,7 @@ a.list-item::before {
 }
 .sticky-actions::before {
   content: ''; position: fixed; inset: auto 0 0 0; height: calc(96px + var(--safe-b)); z-index: -1; pointer-events: none;
-  background: linear-gradient(to top, var(--bg) 0%, color-mix(in srgb, var(--bg) 60%, transparent) 50%, transparent);
+  background: linear-gradient(to top, color-mix(in srgb, var(--bg) 80%, transparent) 0%, color-mix(in srgb, var(--bg) 45%, transparent) 50%, transparent);
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   -webkit-mask-image: linear-gradient(to top, #000 50%, transparent); mask-image: linear-gradient(to top, #000 50%, transparent);
 }
@@ -371,7 +371,8 @@ button.list-item:disabled:active { background: none; }
 
 /* ---------- swipe actions ---------- */
 .swipe { position: relative; overflow: hidden; }
-.swipe-acts { position: absolute; inset: 0 0 0 auto; display: flex; }
+.swipe-acts { position: absolute; inset: 0 0 0 auto; display: flex; visibility: hidden; }
+.swipe:has(> .swipe-row[style*="translate"]) .swipe-acts { visibility: visible; } /* only while swiped */
 .swipe-acts button {
   width: 78px; border: 0; color: #fff; font-size: 14px; font-weight: 600; line-height: 1.2; cursor: pointer;
 }
@@ -460,6 +461,174 @@ body.no-nav .toast { bottom: calc(90px + var(--safe-b)); }
   #printRoot { display: block !important; }
   #printRoot .paper { transform: none !important; box-shadow: none; }
 }
+
+/* =====================================================================
+   Polish layer: background wash, motion, identity and feedback.
+   ===================================================================== */
+html, body { overscroll-behavior-y: contain; } /* our own pull-to-refresh replaces the browser's */
+
+/* A soft wash of colour behind everything, so the glass has something to frost. */
+body::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(70% 45% at 0% 0%, color-mix(in srgb, var(--primary) 20%, transparent), transparent 70%),
+    radial-gradient(60% 40% at 100% 18%, color-mix(in srgb, #af52de 13%, transparent), transparent 70%),
+    radial-gradient(70% 45% at 50% 105%, color-mix(in srgb, #30b0c7 12%, transparent), transparent 70%);
+}
+:root[data-theme="dark"] body::before { opacity: .7; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::before { opacity: .7; } }
+
+/* ---------- screen transitions (View Transitions API) ---------- */
+.topbar { view-transition-name: topbar; }
+.bottomnav { view-transition-name: tabbar; }
+::view-transition-group(topbar), ::view-transition-group(tabbar) { animation-duration: .3s; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .42s; animation-timing-function: cubic-bezier(.32, .72, 0, 1); }
+html[data-dir="forward"]::view-transition-old(root) { animation-name: vt-push-out; }
+html[data-dir="forward"]::view-transition-new(root) { animation-name: vt-push-in; }
+html[data-dir="back"]::view-transition-old(root) { animation-name: vt-pop-out; z-index: 2; }
+html[data-dir="back"]::view-transition-new(root) { animation-name: vt-pop-in; }
+html[data-dir="fade"]::view-transition-old(root) { animation: vt-fade-out .2s ease both; }
+html[data-dir="fade"]::view-transition-new(root) { animation: vt-fade-in .28s ease both; }
+@keyframes vt-push-out { to { transform: translateX(-28%); opacity: .6; } }
+@keyframes vt-push-in { from { transform: translateX(100%); box-shadow: -10px 0 30px rgba(0, 0, 0, .12); } }
+@keyframes vt-pop-out { to { transform: translateX(100%); box-shadow: -10px 0 30px rgba(0, 0, 0, .12); } }
+@keyframes vt-pop-in { from { transform: translateX(-28%); opacity: .6; } }
+@keyframes vt-fade-out { to { opacity: 0; } }
+@keyframes vt-fade-in { from { opacity: 0; transform: scale(.985); } }
+/* Fallback when the API isn't there (older iOS): animate the new page only. */
+#view.in-forward { animation: vt-push-in .38s cubic-bezier(.32, .72, 0, 1); }
+#view.in-back { animation: vt-pop-in .38s cubic-bezier(.32, .72, 0, 1); }
+#view.in-fade { animation: vt-fade-in .28s ease; }
+
+/* New content rises in, one block after another. */
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+#view.enter > *, #view.enter .list > *, #view.enter .summary > * { animation: rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+#view.enter > :nth-child(2), #view.enter .list > :nth-child(2), #view.enter .summary > :nth-child(2) { animation-delay: .04s; }
+#view.enter > :nth-child(3), #view.enter .list > :nth-child(3), #view.enter .summary > :nth-child(3) { animation-delay: .08s; }
+#view.enter > :nth-child(4), #view.enter .list > :nth-child(4), #view.enter .summary > :nth-child(4) { animation-delay: .12s; }
+#view.enter > :nth-child(5), #view.enter .list > :nth-child(5) { animation-delay: .16s; }
+#view.enter > :nth-child(6), #view.enter .list > :nth-child(6) { animation-delay: .2s; }
+#view.enter > :nth-child(n+7), #view.enter .list > :nth-child(n+7) { animation-delay: .24s; }
+
+/* ---------- tab bar: a glass pill that glides to the selected tab ---------- */
+.bottomnav a { position: relative; z-index: 1; }
+.nav-pill {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 4); border-radius: 999px;
+  background: var(--glass-active); box-shadow: inset 0 1px 1px var(--glass-hi);
+  transform: translateX(calc(var(--tab-i, 0) * 100%));
+  transition: transform .5s cubic-bezier(.3, 1.35, .5, 1);
+}
+.bottomnav a:active svg { transform: scale(.88); }
+.bottomnav a svg { transition: transform .2s; }
+.icon-btn:active, .btn:active { filter: brightness(1.12); }
+
+/* Real refraction at the glass edges where the browser supports SVG backdrop filters (Chromium). */
+.refract .bottomnav { backdrop-filter: url(#lg) blur(12px) saturate(190%) brightness(1.06); }
+.refract .topbar .icon-btn, .refract .topbar-actions:not(:empty) { backdrop-filter: url(#lg) blur(10px) saturate(190%) brightness(1.06); }
+
+/* ---------- identity ---------- */
+.avatar.sm { width: 34px; height: 34px; font-size: 13px; }
+.list-item:has(.avatar.sm)::after { left: 62px; }
+.avatar.xl { width: 64px; height: 64px; font-size: 24px; box-shadow: 0 6px 18px color-mix(in srgb, var(--sc, #8e8e93) 40%, transparent); }
+.student-hero {
+  display: flex; gap: 16px; align-items: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--sc) 14%, var(--surface)), var(--surface) 70%);
+}
+.hero-name { font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+.hero-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 15px; }
+.hero-links a { text-decoration: none; }
+
+/* Money: rounded figures that line up, with the cents a little smaller. */
+.amt, .summary .value, .totals-box .t-row, .line-total {
+  font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.cents { font-size: .72em; font-weight: inherit; opacity: .75; }
+
+/* Illustrated empty states. */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.empty .btn { margin-top: 14px; }
+.empty .btn svg { width: 20px; height: 20px; stroke-width: 2.2; margin: 0; color: inherit; }
+.empty-art { position: relative; width: 132px; height: 112px; display: grid; place-items: center; margin-bottom: 8px; }
+.empty-art .blob {
+  position: absolute; width: 92px; height: 92px; border-radius: 42% 58% 55% 45% / 50% 45% 55% 50%;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 30%, transparent), color-mix(in srgb, #af52de 22%, transparent));
+  animation: blob 9s ease-in-out infinite;
+}
+.empty-art .blob.b2 { width: 70px; height: 70px; transform: translate(26px, 18px); background: color-mix(in srgb, #30b0c7 22%, transparent); animation-duration: 12s; animation-direction: reverse; }
+.empty-art svg { position: relative; width: 52px; height: 52px; stroke-width: 1.6; color: var(--primary); margin: 0; animation: float 4s ease-in-out infinite; }
+.empty-art .spark { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--primary); opacity: .5; animation: twinkle 3s ease-in-out infinite; }
+.empty-art .s1 { top: 10px; right: 18px; } .empty-art .s2 { bottom: 14px; left: 14px; width: 6px; height: 6px; animation-delay: 1s; } .empty-art .s3 { top: 26px; left: 22px; width: 5px; height: 5px; background: #ff9500; animation-delay: 2s; }
+@keyframes blob { 50% { border-radius: 55% 45% 40% 60% / 45% 60% 40% 55%; transform: rotate(20deg) scale(1.05); } }
+@keyframes float { 50% { transform: translateY(-6px); } }
+@keyframes twinkle { 50% { opacity: .1; transform: scale(.6); } }
+
+/* ---------- feedback ---------- */
+.hud {
+  position: fixed; left: 50%; top: 42%; z-index: 70; transform: translate(-50%, -50%) scale(.8); opacity: 0;
+  min-width: 150px; padding: 22px 26px 18px; border-radius: 26px; text-align: center; font-weight: 600; font-size: 16px;
+  background: var(--glass-strong); -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%);
+  border: .5px solid var(--glass-edge); box-shadow: inset 0 1px 1px var(--glass-hi), 0 20px 50px rgba(0, 0, 0, .2);
+  animation: hud-in .45s cubic-bezier(.3, 1.4, .5, 1) forwards;
+}
+.hud.out { animation: hud-out .35s ease forwards; }
+.hud svg { width: 64px; height: 64px; display: block; margin: 0 auto 8px; stroke: var(--switch-on); stroke-width: 3.2; fill: none; }
+.hud circle { stroke-dasharray: 145; stroke-dashoffset: 145; animation: draw .5s .1s ease-out forwards; }
+.hud path { stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw .35s .45s ease-out forwards; }
+@keyframes hud-in { to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes hud-out { from { opacity: 1; transform: translate(-50%, -50%) scale(1); } to { opacity: 0; transform: translate(-50%, -50%) scale(.9); } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+.badge.pop { animation: pop .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.18); } }
+.list-item.changed { animation: changed 1.2s ease; }
+@keyframes changed { from { background: var(--primary-soft); } }
+
+/* Calendar: the week slides with your swipe; the month unfolds. */
+.cal-grid.anim-next { animation: cal-next .35s cubic-bezier(.32, .72, 0, 1); }
+.cal-grid.anim-prev { animation: cal-prev .35s cubic-bezier(.32, .72, 0, 1); }
+.cal-grid.anim-expand { animation: cal-expand .4s cubic-bezier(.32, .72, 0, 1); transform-origin: top; }
+.cal-grid.anim-collapse { animation: vt-fade-in .3s ease; }
+@keyframes cal-next { from { transform: translateX(40px); opacity: 0; } }
+@keyframes cal-prev { from { transform: translateX(-40px); opacity: 0; } }
+@keyframes cal-expand { from { clip-path: inset(0 0 72% 0); opacity: .4; } to { clip-path: inset(0 0 0 0); } }
+.cal-toggle svg { transition: transform .3s; }
+
+/* Sheets: slide away on close; the page behind eases back a little while one is open. */
+.sheet.closing { animation: none; transform: translateY(calc(100% + 24px)) !important; transition: transform .28s cubic-bezier(.4, 0, 1, 1) !important; }
+.sheet { transition: transform .35s cubic-bezier(.32, .72, 0, 1); touch-action: pan-y; }
+.sheet-backdrop { transition: opacity .28s; }
+.sheet-backdrop.closing { opacity: 0 !important; }
+#view { transition: transform .45s cubic-bezier(.32, .72, 0, 1), filter .45s; transform-origin: 50% 0; }
+body.sheet-open:not(.no-nav) #view { transform: scale(.955) translateY(8px); filter: saturate(.85); }
+
+/* Shimmer over the invoice preview while its PDF is being made. */
+.preview-wrap { position: relative; }
+.preview-wrap.busy::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, .7) 50%, transparent 70%) -150% 0 / 60% 100% no-repeat;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+@keyframes shimmer { to { background-position: 250% 0; } }
+
+/* Pull to refresh spinner. */
+.ptr {
+  position: fixed; left: 50%; top: calc(var(--safe-t) + 60px); z-index: 15; margin-left: -18px;
+  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; opacity: 0; pointer-events: none;
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: .5px solid var(--glass-edge); box-shadow: var(--glass-shadow); color: var(--primary);
+}
+.ptr svg { width: 20px; height: 20px; stroke-width: 2.6; }
+.ptr.ready { color: var(--switch-on); }
+.ptr.spin svg { animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Respect "reduce motion": keep everything, minus the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
 
 @media (min-width: 700px) {
   .summary { grid-template-columns: repeat(4, 1fr); }

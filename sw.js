@@ -1,9 +1,9 @@
 // Offline support: network first (so updates show straight away), falling back to the cache when offline.
-const CACHE = 'invoice-maker-v11';
+const CACHE = 'invoice-maker-v12';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css', 'css/paper.css',
-  'js/app.js', 'js/store.js', 'js/calc.js', 'js/render.js', 'js/export.js', 'js/ui.js',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  'js/app.js', 'js/store.js', 'js/calc.js', 'js/render.js', 'js/export.js', 'js/ui.js', 'js/motion.js',
+  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
 ];
 

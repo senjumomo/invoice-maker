@@ -4,6 +4,7 @@ import { totals, status, STATUS_LABEL, money, fmtDate, num, clearFormatCache } f
 import { paperHTML, fitPaper, esc } from './render.js';
 import { downloadPDF, sharePDF, printDoc, toCSV, downloadBlob } from './export.js';
 import { $, $$, icon, toast, openSheet, closeSheet, sheetOpen, confirmSheet, readImage, pickFile, initials } from './ui.js';
+import { transition, centsify, rollNum, runRolls, haptic, celebrate, collapse, pop, pullToRefresh } from './motion.js';
 
 const view = $('#view');
 let leaveGuard = null; // returns true if it's OK to leave the current view
@@ -31,11 +32,16 @@ async function route() {
   for (const [re, fn, tab] of routes) {
     const m = h.match(re);
     if (m) {
-      $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
-      setChrome({});
-      view.onclick = view.oninput = view.onchange = null;
-      fn(...m.slice(1));
-      window.scrollTo(0, 0);
+      const depth = /^#\/(new|edit)\//.test(h) ? 2 : /^#\/(doc|customer|reports|items)\b/.test(h) ? 1 : 0;
+      transition(depth, () => {
+        const tabs = $$('#nav a'), i = tabs.findIndex(a => a.dataset.tab === tab);
+        tabs.forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
+        $('#nav').style.setProperty('--tab-i', Math.max(0, i));
+        setChrome({});
+        view.onclick = view.oninput = view.onchange = null;
+        fn(...m.slice(1));
+        window.scrollTo(0, 0);
+      });
       return;
     }
   }
@@ -64,7 +70,8 @@ window.addEventListener('keydown', e => { if (e.key === 'Escape' && sheetOpen())
 
 const customerLabel = d => (d.billTo || '').split('\n')[0].trim() || 'No customer';
 const badge = st => st === 'none' ? '' : `<span class="badge ${st}">${STATUS_LABEL[st]}</span>`;
-const empty = (ico, text) => `<div class="empty">${icon(ico)}<div>${text}</div></div>`;
+const empty = (ico, text, cta = '') => `<div class="empty"><div class="empty-art"><span class="blob"></span><span class="blob b2"></span>${icon(ico)}<i class="spark s1"></i><i class="spark s2"></i><i class="spark s3"></i></div><div>${text}</div>${cta}</div>`;
+document.addEventListener('click', e => { if (e.target.closest('[data-fab]')) $('#fab').click(); }); // empty-state buttons act like +
 const live = () => S.db().docs.filter(d => !d.deletedAt);
 const simple = () => S.settings().simple !== false; // tutor-friendly: fewer fields, + makes an invoice
 
@@ -170,7 +177,8 @@ function docsView() {
   // Default currency only, unless some document uses another one (then show each non-zero amount).
   const show = k => {
     const rows = Object.entries(sums[k]).filter(([c, v]) => Math.abs(v) > 0.004);
-    return (rows.length ? rows : [[cur, 0]]).map(([c, v]) => `<div>${money(v, c)}</div>`).join('');
+    if (rows.length <= 1) { const [c, v] = rows[0] || [cur, 0]; return rollNum('d-' + k, v, x => money(x, c)); }
+    return rows.map(([c, v]) => `<div>${money(v, c)}</div>`).join('');
   };
   const typesUsed = [...new Set(all.map(d => d.type))];
   view.innerHTML = `
@@ -178,7 +186,7 @@ function docsView() {
       <div class="card"><div class="label">Unpaid</div><div class="value">${show('unpaid')}</div></div>
       <div class="card"><div class="label">Overdue</div><div class="value ${Object.values(sums.overdue).some(v => v > 0.004) ? 'bad' : ''}">${show('overdue')}</div></div>
       <div class="card"><div class="label">Paid</div><div class="value good">${show('paid')}</div></div>
-      <div class="card"><div class="label">Documents</div><div class="value">${all.length}</div></div>
+      <div class="card"><div class="label">Documents</div><div class="value">${rollNum('d-count', all.length, x => String(Math.round(x)))}</div></div>
     </div>
     <div class="search">${icon('search')}<input class="input" id="q" type="search" placeholder="Search student, number or item" value="${esc(docFilter.q)}"></div>
     <div class="chips" id="statusChips">${['all', 'unpaid', 'overdue', 'paid', 'trash'].map(s =>
@@ -202,6 +210,7 @@ function docsView() {
         const acts = inTrash || !DOC_TYPES[d.type].payable ? '' : st === 'paid'
           ? `<button data-swipe="unpaid" class="grey">Mark<br>unpaid</button>` : `<button data-swipe="paid" class="ok">Mark<br>paid</button>`;
         const row = `<a class="list-item ${acts ? 'swipe-row' : ''}" href="#/doc/${d.id}" draggable="false">
+        <span class="avatar sm" style="background:${studentColor(d.customerId)}">${initials(customerLabel(d))}</span>
         <div class="main"><div class="title ellipsis">${esc(customerLabel(d))}</div>
           <div class="sub">${DOC_TYPES[d.type].label} ${esc(d.number)} · ${fmtDate(d.date)}${d.recurring?.freq && !d.recurring.ended ? ' · ' + icon('repeat', 'style="width:13px;height:13px;vertical-align:-2px"') : ''}</div></div>
         <div class="amt">${money(t.total, d.currency)}<br>${inTrash ? '' : badge(st)}</div>
@@ -209,14 +218,19 @@ function docsView() {
         return acts ? `<div class="swipe" data-id="${d.id}"><div class="swipe-acts">${acts}</div>${row}</div>` : row;
       }).join('')}</div>
       ${!inTrash && rows.some(r => DOC_TYPES[r.d.type].payable) ? '<p class="small muted hint">Swipe an invoice left to mark it paid.</p>' : ''}`
-      : empty('doc', inTrash ? 'Trash is empty.' : !all.length ? 'No invoices yet.<br>Tap + to create one, or generate them from your lessons on the Today tab.'
-        : docFilter.status === 'unpaid' ? 'Nothing unpaid right now.' : 'Nothing matches.');
+      : empty('doc', inTrash ? 'Trash is empty.' : !all.length ? 'No invoices yet.<br>Create one, or generate them from your lessons on the Today tab.'
+        : docFilter.status === 'unpaid' ? 'Nothing unpaid right now.<br>Nice work.' : 'Nothing matches.', !inTrash && !all.length ? `<button class="btn primary" data-fab>${icon('plus')}New invoice</button>` : '');
   };
   draw();
-  enableSwipe($('#docList'), (id, act) => {
+  enableSwipe($('#docList'), async (id, act) => {
     const d = S.getDoc(id); if (!d) return;
     d.payment = act === 'paid' ? { amount: null, date: S.today(), method: 'Bank transfer' } : null;
-    S.save(); toast(act === 'paid' ? 'Marked as paid' : 'Marked as unpaid'); draw();
+    S.save(); haptic();
+    const row = $(`#docList .swipe[data-id="${id}"]`);
+    const leaves = docFilter.status !== 'all' && !(docFilter.status === 'paid' && act === 'paid');
+    if (leaves) await collapse(row); // it no longer matches the filter: shrink it away
+    toast(act === 'paid' ? 'Marked as paid' : 'Marked as unpaid'); draw();
+    pop($(`#docList .swipe[data-id="${id}"] .badge`));
   });
   view.oninput = e => { if (e.target.id === 'q') { docFilter.q = e.target.value; draw(); } };
   view.onchange = e => { if (e.target.id === 'typeSel') { docFilter.type = e.target.value; draw(); } };
@@ -258,7 +272,7 @@ function docView(id) {
     <div class="preview-wrap" id="pw">${paperHTML(d)}</div>`;
   const pw = $('#pw');
   fitPaper(pw); $$('img', pw).forEach(i => i.onload = () => fitPaper(pw));
-  const busy = async (label, fn) => { toast(label, 60000); try { await fn(); } catch (e) { toast(e.message || 'Something went wrong'); return; } };
+  const busy = async (label, fn) => { toast(label, 60000); pw.classList.add('busy'); try { await fn(); } catch (e) { toast(e.message || 'Something went wrong'); } finally { pw.classList.remove('busy'); } };
   const actions = {
     edit: () => location.hash = `#/edit/${d.id}`,
     restore: () => { S.restoreDoc(d.id); toast('Restored'); docView(id); },
@@ -574,7 +588,7 @@ function editView(id, newType, custId) {
       d.items.forEach(x => { x.qty = num(x.qty); x.price = num(x.price); });
       d.discount = num(d.discount); d.shipping = num(d.shipping);
       S.saveDoc(d); dirty = false; leaveGuard = null;
-      toast('Saved');
+      celebrate('Saved');
       location.replace(`#/doc/${d.id}`);
     }
   };
@@ -614,7 +628,7 @@ function customerPicker(onPick) {
     <div class="search">${icon('search')}<input class="input" id="cq" type="search" placeholder="Search" autofocus></div>
     <div class="menu" id="clist"></div>`);
   const draw = q => $('#clist', sh).innerHTML = cs.filter(c => (c.billTo + c.email).toLowerCase().includes(q)).map(c =>
-    `<button data-id="${c.id}"><span class="avatar">${initials(S.customerName(c))}</span><span><b>${esc(S.customerName(c))}</b><div class="sub">${esc(c.email || c.billTo.split('\n').slice(1).join(', '))}</div></span></button>`).join('') || '<p class="muted">No matches.</p>';
+    `<button data-id="${c.id}"><span class="avatar" style="background:${studentColor(c.id)}">${initials(S.customerName(c))}</span><span><b>${esc(S.customerName(c))}</b><div class="sub">${esc(c.email || c.billTo.split('\n').slice(1).join(', '))}</div></span></button>`).join('') || '<p class="muted">No matches.</p>';
   draw('');
   $('#cq', sh).oninput = e => draw(e.target.value.toLowerCase());
   sh.onclick = e => { const b = e.target.closest('[data-id]'); if (b) { closeSheet(); onPick(S.getCustomer(b.dataset.id)); } };
@@ -705,10 +719,10 @@ function customersView() {
       .filter(r => custFilter.status === 'all' || r.st === custFilter.status || (custFilter.status === 'unpaid' && r.st === 'overdue'))
       .sort((a, b) => (b.balance > 0.004) - (a.balance > 0.004) || S.customerName(a.c).localeCompare(S.customerName(b.c))); // owing first
     $('#clist').innerHTML = rows.length ? `<div class="card list">${rows.map(r => `
-      <a class="list-item" href="#/customer/${r.c.id}"><span class="avatar">${initials(S.customerName(r.c))}</span>
+      <a class="list-item" href="#/customer/${r.c.id}"><span class="avatar" style="background:${studentColor(r.c.id)}">${initials(S.customerName(r.c))}</span>
         <div class="main"><div class="title ellipsis">${esc(S.customerName(r.c))}</div><div class="sub">${studentSub(r.c, r.docs)}</div></div>
         <div class="amt">${r.balance > 0.004 ? money(r.balance) : ''}<br>${r.docs.length ? badge(r.st) : ''}</div></a>`).join('')}</div>`
-      : empty('user', S.db().customers.length ? 'No students match.' : 'No students yet.<br>Tap + to add one.');
+      : empty('user', S.db().customers.length ? 'No students match.' : 'No students yet.<br>Add one to start logging lessons.', S.db().customers.length ? '' : `<button class="btn primary" data-fab>${icon('plus')}Add a student</button>`);
   };
   draw();
   view.oninput = e => { if (e.target.id === 'q') { custFilter.q = e.target.value; draw(); } };
@@ -724,17 +738,20 @@ function customerView(id) {
   $('#topActions').onclick = () => editCustomerSheet(c);
   const docs = st.docs.sort((a, b) => b.date.localeCompare(a.date));
   view.innerHTML = `
-    <div class="card section">
-      <div style="white-space:pre-line">${esc(c.billTo)}</div>
-      ${c.email ? `<div style="margin-top:6px"><a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ''}
-      ${c.phone ? `<div><a href="tel:${esc(c.phone)}">${esc(c.phone)}</a></div>` : ''}
-      ${c.notes ? `<p class="small muted">${esc(c.notes)}</p>` : ''}
+    <div class="card section student-hero" style="--sc:${studentColor(c.id)}">
+      <span class="avatar xl" style="background:${studentColor(c.id)}">${initials(S.customerName(c))}</span>
+      <div class="grow">
+        <div class="hero-name">${esc(S.customerName(c))}</div>
+        ${c.billTo.includes('\n') ? `<div class="small muted" style="white-space:pre-line">${esc(c.billTo.split('\n').slice(1).join('\n'))}</div>` : ''}
+        <div class="hero-links">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : ''}${c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ''}</div>
+        ${c.notes ? `<p class="small muted" style="margin:6px 0 0">${esc(c.notes)}</p>` : ''}
+      </div>
     </div>
     ${lessonCard(c)}
     ${upcomingCard(c)}
     <div class="summary">
-      <div class="card"><div class="label">Billed</div><div class="value">${money(st.billed)}</div></div>
-      <div class="card"><div class="label">Balance</div><div class="value ${st.overdue ? 'bad' : ''}">${money(st.balance)}</div></div>
+      <div class="card"><div class="label">Billed</div><div class="value">${rollNum('c-billed-' + c.id, st.billed, x => money(x))}</div></div>
+      <div class="card"><div class="label">Balance</div><div class="value ${st.overdue ? 'bad' : ''}">${rollNum('c-bal-' + c.id, st.balance, x => money(x))}</div></div>
     </div>
     <div class="row" style="margin-bottom:12px"><button class="btn grow" data-act="statement">${icon('csv')}Statement (CSV)</button>
       <button class="btn grow" data-act="new">${icon('plus')}New ${simple() ? 'invoice' : 'document'}</button></div>
@@ -982,7 +999,7 @@ const lessonRow = l => {
   return acts ? `<div class="swipe" data-id="${l.id}"><div class="swipe-acts">${acts}</div>${row}</div>` : row;
 };
 
-const cal = { sel: S.today(), mode: 'week' };
+const cal = { sel: S.today(), mode: 'week', anim: null };
 function lessonsView() {
   const draw = () => {
     const t = S.today(), sel = cal.sel, ym = monthOf(sel);
@@ -1024,7 +1041,7 @@ function lessonsView() {
           <button class="icon-btn" data-cal="-1" aria-label="Previous ${cal.mode}">${icon('left')}</button>
           <button class="icon-btn" data-cal="1" aria-label="Next ${cal.mode}">${icon('right')}</button>
         </div>
-        <div class="cal-grid">
+        <div class="cal-grid ${cal.anim ? 'anim-' + cal.anim : ''}">
           ${dow.map(d => `<div class="cal-dow">${d}</div>`).join('')}
           ${days.map(d => {
             const ls = byDay[d] || [];
@@ -1042,25 +1059,29 @@ function lessonsView() {
 
       <div class="section-title">${esc(new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { month: 'long' }))}</div>
       <div class="summary">
-        <div class="card"><div class="label">Lessons</div><div class="value">${billed.length}</div></div>
-        <div class="card"><div class="label">Hours</div><div class="value">${r2(billed.reduce((a, l) => a + S.lessonHours(l), 0))}</div></div>
-        <div class="card"><div class="label">Total</div><div class="value">${money(billed.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
-        <div class="card"><div class="label">Not invoiced</div><div class="value ${unbilled.length ? 'bad' : ''}">${money(unbilled.reduce((a, l) => a + lessonAmount(l), 0))}</div></div>
+        <div class="card"><div class="label">Lessons</div><div class="value">${rollNum('t-n', billed.length, x => String(Math.round(x)))}</div></div>
+        <div class="card"><div class="label">Hours</div><div class="value">${rollNum('t-h', r2(billed.reduce((a, l) => a + S.lessonHours(l), 0)), x => String(Math.round(x * 10) / 10))}</div></div>
+        <div class="card"><div class="label">Total</div><div class="value">${rollNum('t-total', billed.reduce((a, l) => a + lessonAmount(l), 0), x => money(x))}</div></div>
+        <div class="card"><div class="label">Not invoiced</div><div class="value ${unbilled.length ? 'bad' : ''}">${rollNum('t-open', unbilled.reduce((a, l) => a + lessonAmount(l), 0), x => money(x))}</div></div>
       </div>
       <button class="btn block" data-act="generate">${icon('doc')}Generate invoices for ${esc(new Date(sel + 'T00:00:00').toLocaleDateString(undefined, { month: 'long' }))}</button>`;
 
+    cal.anim = null;
     const dl = $('#dayList');
     if (dl) enableSwipe(dl, (id, act) => {
       const l = S.getLesson(id); if (!l) return;
-      l.status = act; S.saveLesson(l);
+      l.status = act; S.saveLesson(l); haptic();
       toast(act === 'cancelled' ? 'Cancelled, not charged' : act === 'charged' ? 'Late cancellation, will be charged' : 'Lesson restored');
       draw();
+      const row = $(`#dayList [data-lesson="${id}"]`);
+      if (row) { row.classList.add('changed'); pop(row.querySelector('.badge')); }
     });
   };
   setChrome({ title: 'Today', fab: () => lessonSheet(null, cal.sel, draw) });
   draw();
 
   const move = n => {
+    cal.anim = n > 0 ? 'next' : 'prev';
     if (cal.mode === 'week') cal.sel = S.addDays(cal.sel, 7 * n);
     else { const m = shiftMonth(monthOf(cal.sel), n); cal.sel = m === monthOf(S.today()) ? S.today() : monthStart(m); }
     draw();
@@ -1070,7 +1091,7 @@ function lessonsView() {
     if (c) {
       const v = c.dataset.cal;
       if (v === 'today') { cal.sel = S.today(); draw(); }
-      else if (v === 'mode') { cal.mode = cal.mode === 'week' ? 'month' : 'week'; draw(); }
+      else if (v === 'mode') { cal.mode = cal.mode === 'week' ? 'month' : 'week'; cal.anim = cal.mode === 'month' ? 'expand' : 'collapse'; draw(); }
       else move(+v);
       return;
     }
@@ -1235,7 +1256,7 @@ function generateSheet({ from, to, customerId = null }) {
       return;
     }
     for (const g of picked) S.saveDoc(invoiceFromLessons(g.c, g.lessons));
-    toast(`${picked.length} invoices created`);
+    celebrate(`${picked.length} invoices created`);
     location.hash = '#/invoices';
   };
 }
@@ -1320,7 +1341,7 @@ function settingsView() {
       if (a === 'uploadSig') { const f = await pickFile('image/*'); if (f) { s.signature = await readImage(f, 500); persist(); settingsView(); } }
       if (a === 'rmSig') { s.signature = ''; s.showSignature = false; persist(); settingsView(); }
       if (a === 'drawSig') signatureSheet(url => { s.signature = url; s.showSignature = true; persist(); settingsView(); });
-      if (a === 'style') styleSheet(s, persist);
+      if (a === 'style') styleSheet(s, () => { persist(); applyTheme(); });
       if (a === 'backup') { downloadBlob(new Blob([S.exportJSON()], { type: 'application/json' }), `invoice-maker-backup-${S.today()}.json`); toast('Backup downloaded'); }
       if (a === 'restore') {
         const f = await pickFile('application/json,.json'); if (!f) return;
@@ -1361,13 +1382,22 @@ function signatureSheet(onSave) {
 }
 
 function applyTheme() {
-  const t = S.settings().theme;
-  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', t);
+  const s = S.settings(), root = document.documentElement;
+  if (s.theme === 'auto') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', s.theme);
+  // The accent colour picked for invoices tints the app too (the default keeps iOS blue).
+  if (s.color && s.color.toLowerCase() !== COLORS[0]) {
+    root.style.setProperty('--accent', s.color);
+    root.style.setProperty('--accent-dark', `color-mix(in srgb, ${s.color} 70%, white)`);
+  } else { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-dark'); }
 }
 
 // ------------------------------------------------------------------ boot
 applyTheme();
+new MutationObserver(() => requestAnimationFrame(() => { runRolls(view); centsify(view); })).observe(view, { childList: true, subtree: true });
+pullToRefresh(() => { S.runRecurring(); route(); });
+// Real refraction needs SVG filters in backdrop-filter, which only Chromium supports; other browsers keep frosted glass.
+if (navigator.userAgentData?.brands?.some(b => /Chromium/.test(b.brand))) document.documentElement.classList.add('refract');
 S.purgeTrash();
 const made = S.runRecurring();
 route();
