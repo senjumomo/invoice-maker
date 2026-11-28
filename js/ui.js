@@ -56,7 +56,7 @@ export function openSheet(html, onClose) {
   bd.onclick = closeSheet;
   initSheetDrag(sh, bd);
   const f = sh.querySelector('[autofocus]');
-  if (f) setTimeout(() => f.focus(), 60);
+  if (f) setTimeout(() => f.focus(), wasOpen ? 60 : 460); // wait for the slide-up; the keyboard resizing mid-animation causes jank
   return sh;
 }
 export function closeSheet() {
