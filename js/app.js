@@ -1396,8 +1396,6 @@ function applyTheme() {
 applyTheme();
 new MutationObserver(() => requestAnimationFrame(() => { runRolls(view); centsify(view); })).observe(view, { childList: true, subtree: true });
 pullToRefresh(() => { S.runRecurring(); route(); });
-// Real refraction needs SVG filters in backdrop-filter, which only Chromium supports; other browsers keep frosted glass.
-if (navigator.userAgentData?.brands?.some(b => /Chromium/.test(b.brand))) document.documentElement.classList.add('refract');
 S.purgeTrash();
 const made = S.runRecurring();
 route();

@@ -28,7 +28,7 @@
   --glass-lo: rgba(255, 255, 255, .25);
   --glass-shadow: 0 8px 28px rgba(0, 0, 0, .12), 0 1px 3px rgba(0, 0, 0, .06);
   --glass-active: rgba(118, 118, 128, .16);
-  --glass-blur: blur(14px) saturate(190%) brightness(1.06);
+  --glass-blur: blur(12px) saturate(160%);
   --shadow: none;
   --radius: 22px;
   --nav-h: 62px;
@@ -48,7 +48,7 @@
     --glass: rgba(44, 44, 48, .5); --glass-strong: rgba(36, 36, 40, .82); --glass-edge: rgba(255, 255, 255, .14);
     --glass-hi: rgba(255, 255, 255, .22); --glass-lo: rgba(255, 255, 255, .05);
     --glass-shadow: 0 8px 28px rgba(0, 0, 0, .5), 0 1px 3px rgba(0, 0, 0, .3);
-    --glass-active: rgba(255, 255, 255, .12); --glass-blur: blur(14px) saturate(170%) brightness(.9); color-scheme: dark;
+    --glass-active: rgba(255, 255, 255, .12); --glass-blur: blur(12px) saturate(150%); color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
@@ -61,7 +61,7 @@
     --glass: rgba(44, 44, 48, .5); --glass-strong: rgba(36, 36, 40, .82); --glass-edge: rgba(255, 255, 255, .14);
     --glass-hi: rgba(255, 255, 255, .22); --glass-lo: rgba(255, 255, 255, .05);
     --glass-shadow: 0 8px 28px rgba(0, 0, 0, .5), 0 1px 3px rgba(0, 0, 0, .3);
-    --glass-active: rgba(255, 255, 255, .12); --glass-blur: blur(14px) saturate(170%) brightness(.9); color-scheme: dark;
+    --glass-active: rgba(255, 255, 255, .12); --glass-blur: blur(12px) saturate(150%); color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -98,8 +98,6 @@ a { color: var(--primary); }
 .topbar::before {
   content: ''; position: absolute; inset: 0 0 -18px 0; z-index: -1; pointer-events: none;
   background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 72%, transparent) 0%, color-mix(in srgb, var(--bg) 40%, transparent) 55%, transparent);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent); mask-image: linear-gradient(to bottom, #000 55%, transparent);
   transition: opacity .25s;
 }
 .topbar > * { pointer-events: auto; }
@@ -522,9 +520,6 @@ html[data-dir="fade"]::view-transition-new(root) { animation: vt-fade-in .28s ea
 .bottomnav a svg { transition: transform .2s; }
 .icon-btn:active, .btn:active { filter: brightness(1.12); }
 
-/* Real refraction at the glass edges where the browser supports SVG backdrop filters (Chromium). */
-.refract .bottomnav { backdrop-filter: url(#lg) blur(12px) saturate(190%) brightness(1.06); }
-.refract .topbar .icon-btn, .refract .topbar-actions:not(:empty) { backdrop-filter: url(#lg) blur(10px) saturate(190%) brightness(1.06); }
 
 /* ---------- identity ---------- */
 .avatar.sm { width: 34px; height: 34px; font-size: 13px; }
@@ -599,8 +594,8 @@ html[data-dir="fade"]::view-transition-new(root) { animation: vt-fade-in .28s ea
 .sheet { transition: transform .35s cubic-bezier(.32, .72, 0, 1); touch-action: pan-y; }
 .sheet-backdrop { transition: opacity .28s; }
 .sheet-backdrop.closing { opacity: 0 !important; }
-#view { transition: transform .45s cubic-bezier(.32, .72, 0, 1), filter .45s; transform-origin: 50% 0; }
-body.sheet-open:not(.no-nav) #view { transform: scale(.955) translateY(8px); filter: saturate(.85); }
+#view { transition: transform .45s cubic-bezier(.32, .72, 0, 1); transform-origin: 50% 0; will-change: auto; }
+body.sheet-open:not(.no-nav) #view { transform: scale(.955) translateY(8px); }
 
 /* Shimmer over the invoice preview while its PDF is being made. */
 .preview-wrap { position: relative; }

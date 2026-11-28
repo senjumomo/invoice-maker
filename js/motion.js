@@ -15,7 +15,8 @@ export function transition(depth, run) {
     view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter'); // stagger the new content in
     clearTimeout(view._enterT); view._enterT = setTimeout(() => view.classList.remove('enter'), 900);
   };
-  if (document.startViewTransition && !reduced() && !document.hidden) {
+  // Tab switches use the light CSS fade; full-page view transitions are only worth it for push/pop.
+  if (document.startViewTransition && dir !== 'fade' && !reduced() && !document.hidden) {
     root.dataset.dir = dir;
     const t = document.startViewTransition(() => { run(); after(); });
     // A skipped transition (page hidden, another navigation) still updates the page; it just isn't animated.
